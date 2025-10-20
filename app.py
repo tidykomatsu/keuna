@@ -26,7 +26,8 @@ from database import (
 
 st.set_page_config(page_title="EUNACOM Quiz", page_icon="🏥", layout="centered", initial_sidebar_state="expanded")
 
-QUESTIONS_FILE = Path(r"C:\Users\vales\DataspellProjects\keuna\EUNACOM\OUTPUTS\questions_complete_20251019_185913.json")
+# Use relative path from app.py location
+QUESTIONS_FILE = Path(__file__).parent / "questions_complete_20251019_185913.json"
 
 
 # ============================================================================
