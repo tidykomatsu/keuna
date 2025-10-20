@@ -1,0 +1,95 @@
+[
+  {
+    "question_id": "1",
+    "question_number": "1",
+    "topic": "Diabetes",
+    "question_text": "Un paciente de 20 años, diabético tipo 1, en tratamiento con una dosis de Lantus (insulina glargina) en la noche y tres dosis de insulina cristalina, previas al desayuno, almuerzo y cena, presenta glicemias elevadas postprandiales. ¿Cuál es la conducta más adecuada?",
+    "answer_options": [
+      {
+        "letter": "a.",
+        "text": "Aumentar la dosis de Lantus",
+        "is_correct": false
+      },
+      {
+        "letter": "b.",
+        "text": "Aumentar la insulina cristalina del desayuno y del almuerzo",
+        "is_correct": false
+      },
+      {
+        "letter": "c.",
+        "text": "Aumentar la insulina cristalina del almuerzo y cena",
+        "is_correct": true
+      },
+      {
+        "letter": "d.",
+        "text": "Aumentar la dosis de Lantus y de las 3 insulinas cristalinas",
+        "is_correct": false
+      }
+    ],
+    "correct_answer": "c. Aumentar la insulina cristalina del almuerzo y cena",
+    "explanation": "Las glicemias postprandiales dependen de la insulina rápida (ultrarrápida o cristalina). En este caso, las glicemias postalmuerzo y postcena son las que están elevadas, por lo que se debe aumentar la insulina cristalina de esos horarios.",
+    "source_exam": "EUNACOM 2019"
+  },
+  {
+    "question_id": "2",
+    "question_number": "2",
+    "topic": "Cardiología",
+    "question_text": "Paciente de 65 años con antecedentes de hipertensión arterial consulta por dolor torácico opresivo de 30 minutos de evolución. ECG muestra supradesnivel del ST en derivadas II, III y aVF. ¿Cuál es el diagnóstico más probable?",
+    "answer_options": [
+      {
+        "letter": "a.",
+        "text": "Infarto anterior",
+        "is_correct": false
+      },
+      {
+        "letter": "b.",
+        "text": "Infarto inferior",
+        "is_correct": true
+      },
+      {
+        "letter": "c.",
+        "text": "Infarto lateral",
+        "is_correct": false
+      },
+      {
+        "letter": "d.",
+        "text": "Angina inestable",
+        "is_correct": false
+      }
+    ],
+    "correct_answer": "b. Infarto inferior",
+    "explanation": "El supradesnivel del ST en derivadas II, III y aVF es característico del infarto agudo de miocardio de cara inferior, generalmente asociado a oclusión de la arteria coronaria derecha.",
+    "source_exam": "EUNACOM 2020"
+  },
+  {
+    "question_id": "3",
+    "question_number": "3",
+    "topic": "Pediatría",
+    "question_text": "Lactante de 6 meses con fiebre de 39°C de 12 horas de evolución, sin foco aparente. Examen físico normal. ¿Cuál es la conducta inicial más adecuada?",
+    "answer_options": [
+      {
+        "letter": "a.",
+        "text": "Observación y control en 24 horas",
+        "is_correct": false
+      },
+      {
+        "letter": "b.",
+        "text": "Hemograma, PCR y hemocultivo",
+        "is_correct": true
+      },
+      {
+        "letter": "c.",
+        "text": "Antibióticos empíricos de inmediato",
+        "is_correct": false
+      },
+      {
+        "letter": "d.",
+        "text": "Antipiréticos y alta",
+        "is_correct": false
+      }
+    ],
+    "correct_answer": "b. Hemograma, PCR y hemocultivo",
+    "explanation": "En lactantes menores de 3 meses con fiebre sin foco, está indicado realizar estudio de laboratorio (hemograma, PCR, hemocultivo) para descartar infección bacteriana grave antes de decidir conducta.",
+    "source_exam": "EUNACOM 2021"
+  }
+]
