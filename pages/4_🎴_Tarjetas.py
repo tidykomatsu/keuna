@@ -1,16 +1,29 @@
 """
-Flashcards Page - Study with flashcard mode
+Flashcards Study Mode
 """
 
 import streamlit as st
 import polars as pl
-from database import save_flashcard_review, get_flashcard_stats
 
+from auth import require_auth
+from database import save_flashcard_review, get_flashcard_stats, get_user_stats
+from utils import load_questions
+
+# ============================================================================
+# Page Config
+# ============================================================================
+
+st.set_page_config(
+    page_title="Tarjetas de Estudio",
+    page_icon="🎴",
+    layout="centered"
+)
+
+require_auth()
 
 # ============================================================================
 # Session State Management
 # ============================================================================
-
 
 def init_flashcard_state():
     """Initialize flashcard-specific session state"""
@@ -25,11 +38,9 @@ def init_flashcard_state():
         if key not in st.session_state:
             st.session_state[key] = value
 
-
 # ============================================================================
 # Flashcard Display
 # ============================================================================
-
 
 def show_flashcard(card: dict):
     """Display a single flashcard"""
@@ -110,11 +121,9 @@ def next_card():
 
     st.rerun()
 
-
 # ============================================================================
 # Deck Setup
 # ============================================================================
-
 
 def setup_deck(questions_df: pl.DataFrame, questions_dict: dict):
     """Setup flashcard deck based on user selection"""
@@ -152,15 +161,28 @@ def setup_deck(questions_df: pl.DataFrame, questions_dict: dict):
         st.session_state.fc_reviews = []
         st.rerun()
 
-
 # ============================================================================
 # Main Page Function
 # ============================================================================
 
-
-def show_flashcards_page(questions_df: pl.DataFrame, questions_dict: dict):
+def main():
     """Main entry point for flashcards page"""
+    st.title("🎴 Tarjetas de Estudio")
+
     init_flashcard_state()
+    questions_df, questions_dict = load_questions()
+
+    # Sidebar stats
+    stats = get_user_stats(st.session_state.username)
+    st.sidebar.metric("Preguntas respondidas", stats["total_answered"])
+    st.sidebar.metric("Precisión", f"{stats['accuracy']:.1f}%")
+    st.sidebar.divider()
+
+    # Flashcard-specific stats
+    fc_stats = get_flashcard_stats(st.session_state.username)
+    st.sidebar.subheader("📊 Estadísticas de Tarjetas")
+    st.sidebar.metric("Tarjetas revisadas", fc_stats.get("total_reviewed", 0))
+    st.sidebar.metric("Bien aprendidas", fc_stats.get("correct_count", 0))
 
     if not st.session_state.fc_deck:
         setup_deck(questions_df, questions_dict)
@@ -181,9 +203,6 @@ def show_flashcards_page(questions_df: pl.DataFrame, questions_dict: dict):
             st.session_state.fc_deck = []
             st.rerun()
 
-        # Show stats
-        st.sidebar.divider()
-        st.sidebar.subheader("📊 Estadísticas de Sesión")
-        stats = get_flashcard_stats(st.session_state.username)
-        st.sidebar.metric("Tarjetas revisadas", stats.get("total_reviewed", 0))
-        st.sidebar.metric("Bien aprendidas", stats.get("correct_count", 0))
+
+if __name__ == "__main__":
+    main()

@@ -1,42 +1,22 @@
 """
-Simple authentication for 3 users
+Authentication system
 """
 
 import streamlit as st
-import streamlit_authenticator as stauth
 
 # ============================================================================
 # User Configuration
 # ============================================================================
 
 USERS = {
-    "maria": {
-        "name": "María",
-        "password": "$2b$12$KIXqFhlhbJVwXkqXqZ5vYOYxGxg5nEJ5rKMZ1kZqGxqGxqGxqGxqG",  # 'eunacom2024'
-    },
-    "amigo1": {
-        "name": "Amigo 1",
-        "password": "$2b$12$KIXqFhlhbJVwXkqXqZ5vYOYxGxg5nEJ5rKMZ1kZqGxqGxqGxqGxqG",  # 'pass123'
-    },
-    "amigo2": {
-        "name": "Amigo 2",
-        "password": "$2b$12$KIXqFhlhbJVwXkqXqZ5vYOYxGxg5nEJ5rKMZ1kZqGxqGxqGxqGxqG",  # 'pass456'
-    },
+    "maria": {"name": "María", "password": "eunacom2024"},
+    "amigo1": {"name": "Amigo 1", "password": "pass123"},
+    "amigo2": {"name": "Amigo 2", "password": "pass456"},
 }
-
 
 # ============================================================================
 # Auth Functions
 # ============================================================================
-
-
-def init_auth():
-    """Initialize authentication in session state"""
-    if "authenticated" not in st.session_state:
-        st.session_state.authenticated = False
-        st.session_state.username = None
-        st.session_state.name = None
-
 
 def show_login_page():
     """Display login form"""
@@ -49,7 +29,7 @@ def show_login_page():
         submit = st.form_submit_button("🔐 Ingresar")
 
         if submit:
-            if authenticate(username, password):
+            if username in USERS and password == USERS[username]["password"]:
                 st.session_state.authenticated = True
                 st.session_state.username = username
                 st.session_state.name = USERS[username]["name"]
@@ -58,29 +38,28 @@ def show_login_page():
             else:
                 st.error("❌ Usuario o contraseña incorrectos")
 
-    st.markdown("---")
-    st.caption("💡 **Contraseñas de prueba:** maria: eunacom2024 | amigo1: pass123 | amigo2: pass456")
+    st.caption("💡 **Usuarios:** maria / eunacom2024 | amigo1 / pass123 | amigo2 / pass456")
 
 
-def authenticate(username: str, password: str) -> bool:
-    """Simple password check (in production, use hashed passwords)"""
-    # For simplicity, using plain text comparison
-    # In production: use stauth.Hasher(['password']).generate()
+def require_auth():
+    """
+    Require authentication - call at start of each page
+    Redirects to home if not authenticated
+    """
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
 
-    valid_passwords = {"maria": "eunacom2024", "amigo1": "pass123", "amigo2": "pass456"}
+    if not st.session_state.authenticated:
+        st.warning("⚠️ Debes iniciar sesión primero")
+        st.info("👉 Ve a la página de inicio para ingresar")
+        st.stop()
 
-    return username in valid_passwords and password == valid_passwords[username]
+    # Show user info and logout in sidebar
+    st.sidebar.divider()
+    st.sidebar.markdown(f"**👤 {st.session_state.name}**")
 
-
-def logout():
-    """Clear session state and logout"""
-    st.session_state.authenticated = False
-    st.session_state.username = None
-    st.session_state.name = None
-    st.rerun()
-
-
-def show_logout_button():
-    """Display logout button in sidebar"""
     if st.sidebar.button("🚪 Cerrar Sesión", use_container_width=True):
-        logout()
+        st.session_state.authenticated = False
+        st.session_state.username = None
+        st.session_state.name = None
+        st.switch_page("app.py")
