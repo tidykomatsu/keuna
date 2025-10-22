@@ -85,6 +85,9 @@ def init_database():
     conn.commit()
     conn.close()
 
+    # Initialize flashcard table
+    init_flashcard_table()
+
 
 # ============================================================================
 # Progress Tracking
@@ -249,3 +252,73 @@ def reset_user_progress(username: str):
 
     conn.commit()
     conn.close()
+
+
+# ============================================================================
+# Flashcard Progress Tracking
+# ============================================================================
+
+
+def init_flashcard_table():
+    """Create flashcard review table"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS flashcard_reviews (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            question_id TEXT NOT NULL,
+            review_result TEXT NOT NULL,
+            timestamp TEXT NOT NULL
+        )
+        """
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def save_flashcard_review(username: str, question_id: str, result: str):
+    """Save flashcard review (wrong, partial, correct)"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    timestamp = datetime.now().isoformat()
+
+    cursor.execute(
+        """
+        INSERT INTO flashcard_reviews (username, question_id, review_result, timestamp)
+        VALUES (?, ?, ?, ?)
+        """,
+        (username, question_id, result, timestamp),
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def get_flashcard_stats(username: str) -> dict:
+    """Get flashcard review statistics"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT COUNT(*) as total,
+               SUM(CASE WHEN review_result = 'correct' THEN 1 ELSE 0 END) as correct
+        FROM flashcard_reviews
+        WHERE username = ?
+        """,
+        (username,),
+    )
+
+    result = cursor.fetchone()
+    conn.close()
+
+    if result:
+        total, correct = result
+        return {"total_reviewed": total, "correct_count": correct}
+
+    return {"total_reviewed": 0, "correct_count": 0}
