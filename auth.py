@@ -1,5 +1,5 @@
 """
-Authentication system
+Authentication system with improved UX
 """
 
 import streamlit as st
@@ -20,25 +20,36 @@ USERS = {
 
 def show_login_page():
     """Display login form"""
-    st.title("🏥 EUNACOM Quiz")
-    st.markdown("### Sistema de Práctica para el Examen Único")
 
-    with st.form("login_form"):
-        username = st.text_input("Usuario", placeholder="maria, amigo1, amigo2")
-        password = st.text_input("Contraseña", type="password")
-        submit = st.form_submit_button("🔐 Ingresar")
+    # Center the login form
+    col1, col2, col3 = st.columns([1, 2, 1])
 
-        if submit:
-            if username in USERS and password == USERS[username]["password"]:
-                st.session_state.authenticated = True
-                st.session_state.username = username
-                st.session_state.name = USERS[username]["name"]
-                st.success(f"✅ Bienvenida {st.session_state.name}!")
-                st.rerun()
-            else:
-                st.error("❌ Usuario o contraseña incorrectos")
+    with col2:
+        st.markdown("<h1 style='text-align: center;'>🏥 EUNACOM Quiz</h1>", unsafe_allow_html=True)
+        st.markdown("<h3 style='text-align: center;'>Sistema de Práctica</h3>", unsafe_allow_html=True)
 
-    st.caption("💡 **Usuarios:** maria / eunacom2024 | amigo1 / pass123 | amigo2 / pass456")
+        st.divider()
+
+        with st.form("login_form"):
+            username = st.text_input("👤 Usuario", placeholder="maria, amigo1, amigo2")
+            password = st.text_input("🔒 Contraseña", type="password", placeholder="Ingresa tu contraseña")
+
+            submit = st.form_submit_button("🔐 Ingresar", use_container_width=True, type="primary")
+
+            if submit:
+                if username in USERS and password == USERS[username]["password"]:
+                    st.session_state.authenticated = True
+                    st.session_state.username = username
+                    st.session_state.name = USERS[username]["name"]
+                    st.success(f"✅ ¡Bienvenida {st.session_state.name}!")
+                    st.rerun()
+                else:
+                    st.error("❌ Usuario o contraseña incorrectos")
+
+        st.caption("💡 **Usuarios disponibles:**")
+        st.caption("• maria / eunacom2024")
+        st.caption("• amigo1 / pass123")
+        st.caption("• amigo2 / pass456")
 
 
 def require_auth():
@@ -55,11 +66,12 @@ def require_auth():
         st.stop()
 
     # Show user info and logout in sidebar
-    st.sidebar.divider()
-    st.sidebar.markdown(f"**👤 {st.session_state.name}**")
+    with st.sidebar:
+        st.divider()
+        st.markdown(f"### 👤 {st.session_state.name}")
 
-    if st.sidebar.button("🚪 Cerrar Sesión", use_container_width=True):
-        st.session_state.authenticated = False
-        st.session_state.username = None
-        st.session_state.name = None
-        st.switch_page("app.py")
+        if st.button("🚪 Cerrar Sesión", use_container_width=True, type="secondary"):
+            # Clear session state
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
+            st.rerun()
