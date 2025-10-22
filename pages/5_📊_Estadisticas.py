@@ -1,5 +1,5 @@
 """
-Statistics Dashboard
+Statistics Dashboard - Polished
 """
 
 import streamlit as st
@@ -29,21 +29,27 @@ require_auth()
 def main():
     """Statistics dashboard"""
     st.title("📊 Estadísticas de Progreso")
+    st.markdown("Analiza tu desempeño y encuentra áreas de mejora")
+    st.markdown("---")
 
     questions_df, _ = load_questions()
     stats = get_user_stats(st.session_state.username)
 
     # Overall metrics
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        st.metric("Preguntas Respondidas", stats["total_answered"])
+        st.metric("📝 Total Respondidas", stats["total_answered"])
 
     with col2:
-        st.metric("Respuestas Correctas", stats["total_correct"])
+        st.metric("✅ Correctas", stats["total_correct"])
 
     with col3:
-        st.metric("Precisión", f"{stats['accuracy']:.1f}%")
+        incorrect = stats["total_answered"] - stats["total_correct"]
+        st.metric("❌ Incorrectas", incorrect)
+
+    with col4:
+        st.metric("🎯 Precisión", f"{stats['accuracy']:.1f}%")
 
     st.divider()
 
@@ -82,10 +88,12 @@ def main():
             )
                     + theme_classic()
                     + theme(
-                figure_size=(12, 6),
-                axis_text_x=element_text(angle=45, hjust=1),
-                plot_title=element_text(size=14, weight='bold'),
-                legend_position='top'
+                figure_size=(14, 6),
+                axis_text_x=element_text(angle=45, hjust=1, size=10),
+                plot_title=element_text(size=16, weight='bold'),
+                legend_position='top',
+                legend_title=element_text(size=12),
+                legend_text=element_text(size=10)
             )
             )
 
@@ -93,34 +101,90 @@ def main():
 
             st.divider()
 
-            # Table view
+            # Table view with color coding
+            st.markdown("### 📋 Detalle por Tema")
+
             display_df = topic_stats.select(
                 [
                     pl.col("topic").alias("Tema"),
                     pl.col("total").alias("Total"),
                     pl.col("correct").alias("Correctas"),
+                    (pl.col("total") - pl.col("correct")).alias("Incorrectas"),
                     pl.col("accuracy").round(1).alias("Precisión %"),
                 ]
             )
 
-            st.dataframe(display_df, use_container_width=True, hide_index=True)
+            st.dataframe(
+                display_df,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Precisión %": st.column_config.ProgressColumn(
+                        "Precisión %",
+                        format="%.1f%%",
+                        min_value=0,
+                        max_value=100,
+                    ),
+                }
+            )
+
+            st.divider()
 
             # Weakest topics
             weakest = topic_stats.head(3)
 
-            st.subheader("🎯 Temas a Reforzar")
-            for row in weakest.iter_rows(named=True):
-                st.write(f"- **{row['topic']}**: {row['accuracy']:.1f}% ({row['correct']}/{row['total']})")
-    else:
-        st.info("Aún no has respondido ninguna pregunta. ¡Comienza a practicar!")
+            col1, col2 = st.columns(2)
 
-    # Reset progress
+            with col1:
+                st.markdown("### 🎯 Temas a Reforzar")
+                for row in weakest.iter_rows(named=True):
+                    st.warning(f"**{row['topic']}**: {row['accuracy']:.1f}% ({row['correct']}/{row['total']})")
+
+            with col2:
+                # Strongest topics
+                strongest = topic_stats.tail(3).reverse()
+                st.markdown("### ⭐ Temas Dominados")
+                for row in strongest.iter_rows(named=True):
+                    st.success(f"**{row['topic']}**: {row['accuracy']:.1f}% ({row['correct']}/{row['total']})")
+
+    else:
+        st.info("""
+        ### 📚 Aún no has respondido ninguna pregunta
+
+        ¡Comienza a practicar para ver tus estadísticas!
+
+        **Sugerencias:**
+        - Prueba el modo de **Práctica Aleatoria** para familiarizarte
+        - Enfócate en un tema usando **Por Tema**
+        - Simula el examen real con **Examen Simulado**
+        """)
+
+    # Reset progress section
     st.divider()
-    if st.button("🔄 Reiniciar Todo el Progreso", type="secondary"):
-        if st.checkbox("⚠️ Confirmar reinicio (esta acción no se puede deshacer)"):
-            reset_user_progress(st.session_state.username)
-            st.success("Progreso reiniciado exitosamente")
-            st.rerun()
+    st.markdown("### ⚠️ Zona de Peligro")
+
+    with st.expander("🔄 Reiniciar Todo el Progreso"):
+        st.warning("""
+        **Atención:** Esta acción eliminará permanentemente:
+        - Todas tus respuestas
+        - Todas tus estadísticas
+        - Todo tu historial de progreso
+
+        **NO** eliminará tus tarjetas personalizadas.
+        """)
+
+        confirm_text = st.text_input(
+            "Escribe 'REINICIAR' para confirmar:",
+            key="reset_confirm"
+        )
+
+        if st.button("🔄 Confirmar Reinicio", type="secondary"):
+            if confirm_text == "REINICIAR":
+                reset_user_progress(st.session_state.username)
+                st.success("✅ Progreso reiniciado exitosamente")
+                st.rerun()
+            else:
+                st.error("❌ Debes escribir 'REINICIAR' para confirmar")
 
 
 if __name__ == "__main__":

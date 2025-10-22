@@ -1,5 +1,5 @@
 """
-Random Practice Mode
+Random Practice Mode - Polished
 """
 
 import streamlit as st
@@ -54,23 +54,31 @@ def reset_question_state():
 
 def display_question(question: dict):
     """Display question with answer options"""
-    st.subheader(f"Pregunta #{question.get('question_number', question['question_id'])}")
-    st.write(question["question_text"])
+
+    # Question card
+    with st.container():
+        st.markdown(f"### 📝 Pregunta #{question.get('question_number', question['question_id'])}")
+        st.markdown("---")
+        st.markdown(f"**{question['question_text']}**")
+        st.markdown("")
 
     options = {opt["letter"]: opt["text"] for opt in question["answer_options"]}
 
     selected = st.radio(
         "Selecciona tu respuesta:",
         options=options.keys(),
-        format_func=lambda x: f"{x} {options[x]}",
+        format_func=lambda x: f"**{x}** {options[x]}",
         disabled=st.session_state.answered,
         key=f"answer_{question['question_id']}",
     )
 
-    col1, col2 = st.columns(2)
+    st.markdown("")
+
+    col1, col2, col3 = st.columns([1, 1, 1])
 
     with col1:
-        if st.button("✅ Verificar", disabled=st.session_state.answered, type="primary"):
+        verify_disabled = st.session_state.answered or selected is None
+        if st.button("✅ Verificar", disabled=verify_disabled, type="primary", use_container_width=True):
             st.session_state.answered = True
             st.session_state.selected_answer = selected
 
@@ -81,7 +89,7 @@ def display_question(question: dict):
             st.rerun()
 
     with col2:
-        if st.button("➡️ Siguiente"):
+        if st.button("➡️ Siguiente", use_container_width=True):
             if selected and not st.session_state.answered:
                 correct_opt = next(opt for opt in question["answer_options"] if opt["is_correct"])
                 is_correct = selected == correct_opt["letter"]
@@ -92,17 +100,20 @@ def display_question(question: dict):
 
     # Show feedback if answered
     if st.session_state.answered:
+        st.markdown("---")
         correct_opt = next(opt for opt in question["answer_options"] if opt["is_correct"])
 
         if st.session_state.selected_answer == correct_opt["letter"]:
-            st.success("✅ ¡Correcto!")
+            st.success("### ✅ ¡Correcto!")
         else:
-            st.error(f"❌ Incorrecto. La respuesta correcta es: **{correct_opt['letter']} {correct_opt['text']}**")
+            st.error(f"### ❌ Incorrecto")
+            st.info(f"**Respuesta correcta:** {correct_opt['letter']} {correct_opt['text']}")
 
-        st.info(f"**📖 Explicación:** {question['explanation']}")
+        st.markdown("")
+        st.info(f"**📖 Explicación:**\n\n{question['explanation']}")
 
         if "source_exam" in question:
-            st.caption(f"*Fuente: {question['source_exam']}*")
+            st.caption(f"*📚 Fuente: {question['source_exam']}*")
 
 # ============================================================================
 # Main Page Logic
@@ -111,31 +122,46 @@ def display_question(question: dict):
 def main():
     """Main practice mode logic"""
     st.title("📚 Práctica Aleatoria")
+    st.markdown("Responde preguntas al azar y recibe retroalimentación inmediata")
+    st.markdown("---")
 
     init_state()
     questions_df, questions_dict = load_questions()
 
     # Sidebar stats
-    stats = get_user_stats(st.session_state.username)
-    st.sidebar.metric("Preguntas respondidas", stats["total_answered"])
-    st.sidebar.metric("Precisión", f"{stats['accuracy']:.1f}%")
-    st.sidebar.divider()
+    with st.sidebar:
+        st.markdown("### 📊 Tu Progreso")
+        stats = get_user_stats(st.session_state.username)
 
-    # Sidebar options
-    show_unanswered = st.sidebar.checkbox("Solo preguntas no respondidas", value=False)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Respondidas", stats["total_answered"])
+        with col2:
+            st.metric("Precisión", f"{stats['accuracy']:.1f}%")
+
+        st.divider()
+
+        st.markdown("### ⚙️ Opciones")
+        show_unanswered = st.checkbox("Solo preguntas no respondidas", value=False)
 
     if show_unanswered:
         answered_ids = get_answered_questions(st.session_state.username)
         available_df = questions_df.filter(~pl.col("question_id").is_in(list(answered_ids)))
 
         if len(available_df) == 0:
-            st.success("🎉 ¡Has respondido todas las preguntas!")
-            if st.button("Reiniciar progreso"):
-                reset_user_progress(st.session_state.username)
-                st.rerun()
+            st.success("### 🎉 ¡Felicitaciones!")
+            st.info("Has respondido todas las preguntas disponibles.")
+
+            if st.button("🔄 Reiniciar progreso", type="secondary"):
+                with st.spinner("Reiniciando..."):
+                    reset_user_progress(st.session_state.username)
+                    st.success("Progreso reiniciado exitosamente")
+                    st.rerun()
             return
     else:
         available_df = questions_df
+
+    st.caption(f"📊 {len(available_df)} preguntas disponibles")
 
     # Get current question
     if st.session_state.current_question is None or st.session_state.refresh_question:
