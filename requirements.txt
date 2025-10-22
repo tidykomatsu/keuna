@@ -2,3 +2,4 @@ streamlit
 polars
 streamlit-authenticator
 plotnine
+streamlit_authenticator
