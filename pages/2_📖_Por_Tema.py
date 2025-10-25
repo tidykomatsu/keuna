@@ -1,5 +1,5 @@
 """
-Topic-Based Practice Mode - Polished
+Topic-Based Practice Mode - With Smart Question Selection
 """
 
 import streamlit as st
@@ -12,6 +12,7 @@ from src.database import (
     get_user_stats,
 )
 from src.utils import load_questions
+from src.question_selector import select_next_question
 
 # ============================================================================
 # Page Config
@@ -122,7 +123,7 @@ def display_question(question: dict):
 def main():
     """Topic-based practice"""
     st.title("📖 Práctica por Tema")
-    st.markdown("Enfócate en temas específicos para fortalecer tus conocimientos")
+    st.markdown("Enfócate en temas específicos - el sistema priorizará preguntas que necesitas repasar")
     st.markdown("---")
 
     init_state()
@@ -148,6 +149,22 @@ def main():
             options=topics,
             key="topic_selector",
             label_visibility="collapsed"
+        )
+
+        st.divider()
+
+        st.markdown("### ⚙️ Opciones")
+        mode = st.selectbox(
+            "Modo de selección:",
+            options=["adaptive", "unanswered", "weakest", "random"],
+            format_func=lambda x: {
+                "adaptive": "🧠 Adaptativo (Recomendado)",
+                "unanswered": "📝 Solo no respondidas",
+                "weakest": "⚠️ Solo incorrectas",
+                "random": "🎲 Completamente aleatorio"
+            }[x],
+            index=0,
+            help="Adaptativo: Mezcla inteligente basada en tu rendimiento en este tema"
         )
 
     # Reset question if topic changed
@@ -176,10 +193,20 @@ def main():
 
     st.markdown("---")
 
-    # Get current question
+    # Get current question using smart selector
     if st.session_state.current_question is None or st.session_state.refresh_question:
-        sampled_id = topic_df.sample(1)["question_id"][0]
-        st.session_state.current_question = questions_dict[sampled_id]
+        # Use smart selection algorithm with topic filter
+        selected_question = select_next_question(
+            st.session_state.username,
+            topic=selected_topic,
+            mode=mode
+        )
+
+        if selected_question is None:
+            st.warning("No hay preguntas disponibles para este tema")
+            return
+
+        st.session_state.current_question = selected_question
         st.session_state.refresh_question = False
         reset_question_state()
 

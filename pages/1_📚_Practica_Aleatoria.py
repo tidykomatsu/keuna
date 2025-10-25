@@ -1,5 +1,5 @@
 """
-Random Practice Mode - Polished
+Random Practice Mode - With Smart Question Selection
 """
 
 import streamlit as st
@@ -13,6 +13,7 @@ from src.database import (
     get_user_stats,
 )
 from src.utils import load_questions
+from src.question_selector import select_next_question
 
 # ============================================================================
 # Page Config
@@ -122,7 +123,7 @@ def display_question(question: dict):
 def main():
     """Main practice mode logic"""
     st.title("📚 Práctica Aleatoria")
-    st.markdown("Responde preguntas al azar y recibe retroalimentación inmediata")
+    st.markdown("El sistema priorizará preguntas que necesitas repasar")
     st.markdown("---")
 
     init_state()
@@ -142,31 +143,43 @@ def main():
         st.divider()
 
         st.markdown("### ⚙️ Opciones")
-        show_unanswered = st.checkbox("Solo preguntas no respondidas", value=False)
+        mode = st.selectbox(
+            "Modo de selección:",
+            options=["adaptive", "unanswered", "weakest", "random"],
+            format_func=lambda x: {
+                "adaptive": "🧠 Adaptativo (Recomendado)",
+                "unanswered": "📝 Solo no respondidas",
+                "weakest": "⚠️ Solo incorrectas",
+                "random": "🎲 Completamente aleatorio"
+            }[x],
+            index=0,
+            help="Adaptativo: Mezcla inteligente basada en tu rendimiento"
+        )
 
-    if show_unanswered:
-        answered_ids = get_answered_questions(st.session_state.username)
-        available_df = questions_df.filter(~pl.col("question_id").is_in(list(answered_ids)))
-
-        if len(available_df) == 0:
-            st.success("### 🎉 ¡Felicitaciones!")
-            st.info("Has respondido todas las preguntas disponibles.")
-
-            if st.button("🔄 Reiniciar progreso", type="secondary"):
-                with st.spinner("Reiniciando..."):
-                    reset_user_progress(st.session_state.username)
-                    st.success("Progreso reiniciado exitosamente")
-                    st.rerun()
-            return
-    else:
-        available_df = questions_df
-
-    st.caption(f"📊 {len(available_df)} preguntas disponibles")
-
-    # Get current question
+    # Get current question using smart selector
     if st.session_state.current_question is None or st.session_state.refresh_question:
-        sampled_id = available_df.sample(1)["question_id"][0]
-        st.session_state.current_question = questions_dict[sampled_id]
+        # Use smart selection algorithm
+        selected_question = select_next_question(
+            st.session_state.username,
+            mode=mode
+        )
+
+        if selected_question is None:
+            st.warning("No hay preguntas disponibles")
+
+            # Check if user completed all in unanswered mode
+            if mode == "unanswered":
+                st.success("### 🎉 ¡Felicitaciones!")
+                st.info("Has respondido todas las preguntas disponibles.")
+
+                if st.button("🔄 Reiniciar progreso", type="secondary"):
+                    with st.spinner("Reiniciando..."):
+                        reset_user_progress(st.session_state.username)
+                        st.success("Progreso reiniciado exitosamente")
+                        st.rerun()
+            return
+
+        st.session_state.current_question = selected_question
         st.session_state.refresh_question = False
         reset_question_state()
 
