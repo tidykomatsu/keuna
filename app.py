@@ -4,8 +4,8 @@ EUNACOM Quiz Application - Home Page with Conditional Navigation
 
 import streamlit as st
 
-from auth import show_login_page
-from database import init_database, get_user_stats
+from src.auth import show_login_page
+from src.database import init_database, get_user_stats
 
 # ============================================================================
 # Page Config
