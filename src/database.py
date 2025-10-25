@@ -12,7 +12,7 @@ import json
 # Database Setup
 # ============================================================================
 
-DB_PATH = Path("users.db")
+DB_PATH = Path("../users.db")
 
 
 def init_database():

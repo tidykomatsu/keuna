@@ -6,9 +6,9 @@ import streamlit as st
 import polars as pl
 from plotnine import *
 
-from auth import require_auth
-from database import get_user_stats, get_stats_by_topic, reset_user_progress
-from utils import load_questions
+from src.auth import require_auth
+from src.database import get_user_stats, get_stats_by_topic, reset_user_progress
+from src.utils import load_questions
 
 # ============================================================================
 # Page Config

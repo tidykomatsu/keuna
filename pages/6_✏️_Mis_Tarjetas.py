@@ -6,8 +6,8 @@ import streamlit as st
 import polars as pl
 from datetime import datetime
 
-from auth import require_auth
-from database import (
+from src.auth import require_auth
+from src.database import (
     create_custom_flashcard,
     get_custom_flashcards,
     update_custom_flashcard,
@@ -16,7 +16,7 @@ from database import (
     import_custom_flashcards_json,
     get_user_stats
 )
-from utils import load_questions
+from src.utils import load_questions
 
 # ============================================================================
 # Page Config

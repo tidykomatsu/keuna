@@ -5,14 +5,14 @@ Random Practice Mode - Polished
 import streamlit as st
 import polars as pl
 
-from auth import require_auth
-from database import (
+from src.auth import require_auth
+from src.database import (
     save_answer,
     get_answered_questions,
     reset_user_progress,
     get_user_stats,
 )
-from utils import load_questions
+from src.utils import load_questions
 
 # ============================================================================
 # Page Config
