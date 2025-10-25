@@ -15,7 +15,7 @@ st.set_page_config(
     page_title="EUNACOM Quiz",
     page_icon="🏥",
     layout="centered",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"  # Hide sidebar by default
 )
 
 # ============================================================================
@@ -31,9 +31,39 @@ def main():
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
 
+    # Hide sidebar completely before authentication
     if not st.session_state.authenticated:
+        # Inject CSS to hide sidebar on login page
+        st.markdown(
+            """
+            <style>
+                [data-testid="collapsedControl"] {
+                    display: none
+                }
+                section[data-testid="stSidebar"] {
+                    display: none;
+                }
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
         show_login_page()
         return
+
+    # Show sidebar after authentication
+    st.markdown(
+        """
+        <style>
+            [data-testid="collapsedControl"] {
+                display: block
+            }
+            section[data-testid="stSidebar"] {
+                display: block;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
 
     # Authenticated home page
     st.title("🏥 EUNACOM Quiz")
