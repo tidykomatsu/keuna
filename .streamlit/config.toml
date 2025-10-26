@@ -8,14 +8,9 @@ font = "sans serif"
 [ui]
 hideTopBar = false
 
-[browser]
-gatherUsageStats = false
+#[browser]
+#gatherUsageStats = false
 
-[server]
-headless = true
-enableCORS = false
-enableXsrfProtection = true
-maxUploadSize = 200
 
 [runner]
 fastReruns = true

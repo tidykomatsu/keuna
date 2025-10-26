@@ -7,43 +7,57 @@ import json
 import sys
 import os
 
+from dotenv import load_dotenv
+load_dotenv()
+
 # Add parent directory to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.database import insert_questions_from_json, get_question_count
 
 # ============================================================================
-# Topic Extraction (from old utils.py)
+# Validation
 # ============================================================================
-
-TOPICS = [
-    'Cardiología',
-    'Diabetes',
-    'Endocrinología',
-    'Gastroenterología',
-    'Hematología',
-    'Infectología',
-    'Nefrología',
-    'Neurología',
-    'Respiratorio',
-    'Reumatología'
-]
-
-
-def extract_topic_from_source(source_file: str) -> str:
-    """Extract topic from source_file using string detection"""
-    source_lower = source_file.lower()
-
-    for topic in TOPICS:
-        if topic.lower() in source_lower:
-            return topic
-
-    return "General"  # Default topic if none found
-
 
 def has_correct_answer(question: dict) -> bool:
     """Check if question has at least one correct answer marked"""
     return any(opt.get("is_correct", False) for opt in question.get("answer_options", []))
+
+
+def validate_question_structure(question: dict) -> tuple[bool, str]:
+    """
+    Validate question has all required fields
+    Returns (is_valid, error_message)
+    """
+    required_fields = [
+        "question_id", "question_number", "topic",
+        "question_text", "answer_options", "correct_answer", "explanation"
+    ]
+
+    for field in required_fields:
+        if field not in question:
+            return False, f"Missing field: {field}"
+
+    # Validate answer_options structure
+    if not isinstance(question["answer_options"], list):
+        return False, "answer_options must be a list"
+
+    if len(question["answer_options"]) == 0:
+        return False, "No answer options"
+
+    for opt in question["answer_options"]:
+        if "letter" not in opt:
+            return False, "Answer option missing 'letter'"
+        if "text" not in opt:
+            return False, "Answer option missing 'text'"
+        if "is_correct" not in opt:
+            return False, "Answer option missing 'is_correct'"
+
+    # Check for correct answer
+    if not has_correct_answer(question):
+        return False, "No correct answer marked"
+
+    return True, ""
 
 
 # ============================================================================
@@ -55,69 +69,75 @@ def import_questions_from_file(filepath: str):
 
     print(f"📂 Loading questions from: {filepath}")
 
-    with open(filepath, 'r', encoding='utf-8') as f:
-        questions = json.load(f)
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            questions = json.load(f)
+    except FileNotFoundError:
+        print(f"❌ File not found: {filepath}")
+        return
+    except json.JSONDecodeError as e:
+        print(f"❌ Invalid JSON: {e}")
+        return
 
     print(f"📊 Found {len(questions)} questions")
 
-    # Filter and enrich questions
-    print("🔍 Validating and enriching question structure...")
+    # Filter and validate questions
+    print("🔍 Validating question structure...")
     valid_questions = []
+    skipped_count = 0
 
-    for i, q in enumerate(questions):
-        # Check if has correct answer
-        if not has_correct_answer(q):
-            print(f"⚠️  Skipping question {i+1}: No correct answer marked")
+    for i, q in enumerate(questions, 1):
+        is_valid, error_msg = validate_question_structure(q)
+
+        if not is_valid:
+            print(f"⚠️  Skipping question {i} ({q.get('question_id', 'unknown')}): {error_msg}")
+            skipped_count += 1
             continue
 
-        # Extract topic from source_file
-        topic = extract_topic_from_source(q.get("source_file", ""))
-
-        # Validate required fields
-        required_fields = [
-            "question_id", "question_number",
-            "question_text", "answer_options", "correct_answer", "explanation"
-        ]
-
-        try:
-            for field in required_fields:
-                assert field in q, f"Missing field: {field}"
-
-            # Validate answer_options structure
-            for opt in q["answer_options"]:
-                assert "letter" in opt, f"Answer option missing 'letter'"
-                assert "text" in opt, f"Answer option missing 'text'"
-                assert "is_correct" in opt, f"Answer option missing 'is_correct'"
-
-            # Add enriched topic
-            q["topic"] = topic
-
-            valid_questions.append(q)
-
-        except AssertionError as e:
-            print(f"⚠️  Skipping question {i+1}: {e}")
+        # Ensure topic exists (use the one already in the file)
+        if not q.get("topic") or q["topic"].strip() == "":
+            print(f"⚠️  Skipping question {i}: Empty topic")
+            skipped_count += 1
             continue
+
+        valid_questions.append(q)
 
     print(f"✅ Validation passed: {len(valid_questions)} valid questions")
 
-    if len(valid_questions) < len(questions):
-        print(f"⚠️  Filtered out {len(questions) - len(valid_questions)} invalid questions")
+    if skipped_count > 0:
+        print(f"⚠️  Skipped {skipped_count} invalid questions")
+
+    if len(valid_questions) == 0:
+        print("❌ No valid questions to import")
+        return
 
     # Insert into database
-    print("💾 Inserting into database...")
+    print("\n💾 Inserting into database...")
     success_count, error_count = insert_questions_from_json(valid_questions)
 
+    print(f"\n{'='*60}")
     print(f"✅ Successfully inserted: {success_count}")
     print(f"❌ Errors: {error_count}")
+    print(f"{'='*60}")
 
     # Verify
     total_in_db = get_question_count()
-    print(f"📊 Total questions in database: {total_in_db}")
+    print(f"\n📊 Total questions in database: {total_in_db}")
+
+    # Show topic distribution
+    print("\n📚 Topics loaded:")
+    topics = {}
+    for q in valid_questions:
+        topic = q["topic"]
+        topics[topic] = topics.get(topic, 0) + 1
+
+    for topic, count in sorted(topics.items(), key=lambda x: x[1], reverse=True):
+        print(f"   {topic}: {count}")
 
 
 if __name__ == "__main__":
-    # Default to the questions file in EUNACOM/OUTPUTS
-    default_file = "EUNACOM/OUTPUTS/questions_complete_20251019_185913.json"
+    # Default to TEST file for now
+    default_file = r"C:\Users\vales\DataspellProjects\keuna\data\processed\questions_categorized_TEST.json"
     filepath = default_file
 
     if len(sys.argv) > 1:
@@ -125,7 +145,7 @@ if __name__ == "__main__":
 
     if not os.path.exists(filepath):
         print(f"❌ File not found: {filepath}")
-        print(f"Usage: python {sys.argv[0]} [path_to_questions.json]")
+        print(f"\nUsage: python {sys.argv[0]} [path_to_questions.json]")
         print(f"Default file: {default_file}")
         sys.exit(1)
 

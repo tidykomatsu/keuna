@@ -14,6 +14,7 @@ from datetime import datetime
 # Connection Management
 # ============================================================================
 
+
 def get_connection():
     """Get PostgreSQL connection from Supabase"""
     try:
@@ -29,6 +30,7 @@ def get_connection():
 # ============================================================================
 # Database Initialization
 # ============================================================================
+
 
 def init_database():
     """
@@ -47,7 +49,6 @@ def init_database():
 # ============================================================================
 # QUESTION MANAGEMENT
 # ============================================================================
-
 def insert_questions_from_json(questions: list[dict]) -> tuple[int, int]:
     """
     Insert questions from JSON structure into database
@@ -85,19 +86,20 @@ def insert_questions_from_json(questions: list[dict]) -> tuple[int, int]:
                     question["question_number"],
                     question["topic"],
                     question["question_text"],
-                    Json(question["answer_options"]),  # Convert list to JSONB
+                    Json(question["answer_options"]),
                     question["correct_answer"],
                     question["explanation"],
                     question.get("source_file"),
-                    question.get("source_type")
-                )
+                    question.get("source_type"),
+                ),
             )
             success_count += 1
         except Exception as e:
             error_count += 1
-            st.warning(f"Error inserting question {question['question_id']}: {e}")
+            # FIX: Use print instead of st.warning for script compatibility
+            print(f"❌ Error inserting question {question['question_id']}: {e}")
             conn.rollback()
-            cursor = conn.cursor()  # Get new cursor after rollback
+            cursor = conn.cursor()
             continue
 
     conn.commit()
@@ -114,7 +116,8 @@ def get_all_questions() -> pl.DataFrame:
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=RealDictCursor)
 
-    cursor.execute("""
+    cursor.execute(
+        """
         SELECT
             question_id,
             question_number,
@@ -127,28 +130,31 @@ def get_all_questions() -> pl.DataFrame:
             source_type
         FROM questions
         ORDER BY question_number
-    """)
+    """
+    )
 
     rows = cursor.fetchall()
     cursor.close()
     conn.close()
 
     if not rows:
-        return pl.DataFrame(schema={
-            "question_id": pl.Utf8,
-            "question_number": pl.Utf8,
-            "topic": pl.Utf8,
-            "question_text": pl.Utf8,
-            "answer_options": pl.List(pl.Struct([
-                pl.Field("letter", pl.Utf8),
-                pl.Field("text", pl.Utf8),
-                pl.Field("is_correct", pl.Boolean)
-            ])),
-            "correct_answer": pl.Utf8,
-            "explanation": pl.Utf8,
-            "source_file": pl.Utf8,
-            "source_type": pl.Utf8
-        })
+        return pl.DataFrame(
+            schema={
+                "question_id": pl.Utf8,
+                "question_number": pl.Utf8,
+                "topic": pl.Utf8,
+                "question_text": pl.Utf8,
+                "answer_options": pl.List(
+                    pl.Struct(
+                        [pl.Field("letter", pl.Utf8), pl.Field("text", pl.Utf8), pl.Field("is_correct", pl.Boolean)]
+                    )
+                ),
+                "correct_answer": pl.Utf8,
+                "explanation": pl.Utf8,
+                "source_file": pl.Utf8,
+                "source_type": pl.Utf8,
+            }
+        )
 
     return pl.DataFrame(rows)
 
@@ -164,7 +170,7 @@ def get_questions_by_topic(topic: str) -> pl.DataFrame:
         WHERE topic = %s
         ORDER BY question_number
         """,
-        (topic,)
+        (topic,),
     )
 
     rows = cursor.fetchall()
@@ -179,10 +185,7 @@ def get_question_by_id(question_id: str) -> dict:
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=RealDictCursor)
 
-    cursor.execute(
-        "SELECT * FROM questions WHERE question_id = %s",
-        (question_id,)
-    )
+    cursor.execute("SELECT * FROM questions WHERE question_id = %s", (question_id,))
 
     row = cursor.fetchone()
     cursor.close()
@@ -209,6 +212,7 @@ def get_question_count() -> int:
 # USER ANSWERS
 # ============================================================================
 
+
 def save_answer(username: str, question_id: str, user_answer: str, is_correct: bool):
     """
     Save user answer - trigger automatically updates performance stats
@@ -221,7 +225,7 @@ def save_answer(username: str, question_id: str, user_answer: str, is_correct: b
         INSERT INTO user_answers (username, question_id, user_answer, is_correct)
         VALUES (%s, %s, %s, %s)
         """,
-        (username, question_id, user_answer, is_correct)
+        (username, question_id, user_answer, is_correct),
     )
 
     conn.commit()
@@ -234,10 +238,7 @@ def get_answered_questions(username: str) -> set:
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute(
-        "SELECT DISTINCT question_id FROM user_answers WHERE username = %s",
-        (username,)
-    )
+    cursor.execute("SELECT DISTINCT question_id FROM user_answers WHERE username = %s", (username,))
 
     results = cursor.fetchall()
     cursor.close()
@@ -259,7 +260,7 @@ def get_user_stats(username: str) -> dict:
         FROM user_answers
         WHERE username = %s
         """,
-        (username,)
+        (username,),
     )
 
     row = cursor.fetchone()
@@ -270,11 +271,7 @@ def get_user_stats(username: str) -> dict:
     total_correct = row[1] or 0
     accuracy = (total_correct / total_answered * 100) if total_answered > 0 else 0
 
-    return {
-        "total_answered": total_answered,
-        "total_correct": total_correct,
-        "accuracy": accuracy
-    }
+    return {"total_answered": total_answered, "total_correct": total_correct, "accuracy": accuracy}
 
 
 def get_stats_by_topic(username: str, questions_df: pl.DataFrame = None) -> pl.DataFrame:
@@ -294,7 +291,7 @@ def get_stats_by_topic(username: str, questions_df: pl.DataFrame = None) -> pl.D
         GROUP BY q.topic
         ORDER BY correct::float / COUNT(*) ASC
         """,
-        (username,)
+        (username,),
     )
 
     rows = cursor.fetchall()
@@ -305,9 +302,7 @@ def get_stats_by_topic(username: str, questions_df: pl.DataFrame = None) -> pl.D
         return pl.DataFrame()
 
     df = pl.DataFrame(rows)
-    df = df.with_columns([
-        (pl.col("correct") / pl.col("total") * 100).alias("accuracy")
-    ])
+    df = df.with_columns([(pl.col("correct") / pl.col("total") * 100).alias("accuracy")])
 
     return df
 
@@ -329,6 +324,7 @@ def reset_user_progress(username: str):
 # ============================================================================
 # USER PERFORMANCE TRACKING
 # ============================================================================
+
 
 def get_user_performance(username: str, limit: int = None) -> pl.DataFrame:
     """
@@ -386,7 +382,7 @@ def get_topic_performance(username: str) -> pl.DataFrame:
         GROUP BY topic
         ORDER BY avg_priority DESC
         """,
-        (username,)
+        (username,),
     )
 
     rows = cursor.fetchall()
@@ -397,9 +393,7 @@ def get_topic_performance(username: str) -> pl.DataFrame:
         return pl.DataFrame()
 
     df = pl.DataFrame(rows)
-    df = df.with_columns([
-        (pl.col("total_correct") / pl.col("total_attempts") * 100).alias("accuracy")
-    ])
+    df = df.with_columns([(pl.col("total_correct") / pl.col("total_attempts") * 100).alias("accuracy")])
 
     return df
 
@@ -407,6 +401,7 @@ def get_topic_performance(username: str) -> pl.DataFrame:
 # ============================================================================
 # FLASHCARD OPERATIONS
 # ============================================================================
+
 
 def save_flashcard_review(username: str, card_id: str, rating: str):
     """Save flashcard review"""
@@ -418,7 +413,7 @@ def save_flashcard_review(username: str, card_id: str, rating: str):
         INSERT INTO flashcard_reviews (username, card_id, rating)
         VALUES (%s, %s, %s)
         """,
-        (username, card_id, rating)
+        (username, card_id, rating),
     )
 
     conn.commit()
@@ -439,22 +434,20 @@ def get_flashcard_stats(username: str) -> dict:
         FROM flashcard_reviews
         WHERE username = %s
         """,
-        (username,)
+        (username,),
     )
 
     row = cursor.fetchone()
     cursor.close()
     conn.close()
 
-    return {
-        "total_reviewed": row[0] or 0,
-        "correct_count": row[1] or 0
-    }
+    return {"total_reviewed": row[0] or 0, "correct_count": row[1] or 0}
 
 
 # ============================================================================
 # CUSTOM FLASHCARDS
 # ============================================================================
+
 
 def create_custom_flashcard(username: str, front_text: str, back_text: str, topic: str = None) -> bool:
     """Create new custom flashcard"""
@@ -467,7 +460,7 @@ def create_custom_flashcard(username: str, front_text: str, back_text: str, topi
             INSERT INTO custom_flashcards (username, front_text, back_text, topic)
             VALUES (%s, %s, %s, %s)
             """,
-            (username, front_text, back_text, topic)
+            (username, front_text, back_text, topic),
         )
         conn.commit()
         success = True
@@ -493,7 +486,7 @@ def get_custom_flashcards(username: str) -> pl.DataFrame:
         WHERE username = %s AND archived = FALSE
         ORDER BY created_at DESC
         """,
-        (username,)
+        (username,),
     )
 
     rows = cursor.fetchall()
@@ -501,13 +494,15 @@ def get_custom_flashcards(username: str) -> pl.DataFrame:
     conn.close()
 
     if not rows:
-        return pl.DataFrame(schema={
-            "id": pl.Int64,
-            "front_text": pl.Utf8,
-            "back_text": pl.Utf8,
-            "topic": pl.Utf8,
-            "created_at": pl.Datetime
-        })
+        return pl.DataFrame(
+            schema={
+                "id": pl.Int64,
+                "front_text": pl.Utf8,
+                "back_text": pl.Utf8,
+                "topic": pl.Utf8,
+                "created_at": pl.Datetime,
+            }
+        )
 
     return pl.DataFrame(rows)
 
@@ -524,7 +519,7 @@ def update_custom_flashcard(card_id: int, front_text: str, back_text: str, topic
             SET front_text = %s, back_text = %s, topic = %s
             WHERE id = %s
             """,
-            (front_text, back_text, topic, card_id)
+            (front_text, back_text, topic, card_id),
         )
         conn.commit()
         success = True
@@ -543,10 +538,7 @@ def archive_custom_flashcard(card_id: int):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute(
-        "UPDATE custom_flashcards SET archived = TRUE WHERE id = %s",
-        (card_id,)
-    )
+    cursor.execute("UPDATE custom_flashcards SET archived = TRUE WHERE id = %s", (card_id,))
 
     conn.commit()
     cursor.close()
@@ -575,12 +567,7 @@ def import_custom_flashcards_json(username: str, json_data: str) -> tuple:
     error_count = 0
 
     for card in cards:
-        success = create_custom_flashcard(
-            username,
-            card["front_text"],
-            card["back_text"],
-            card.get("topic")
-        )
+        success = create_custom_flashcard(username, card["front_text"], card["back_text"], card.get("topic"))
 
         if success:
             success_count += 1
@@ -593,6 +580,7 @@ def import_custom_flashcards_json(username: str, json_data: str) -> tuple:
 # ============================================================================
 # TOPIC MASTERY FUNCTIONS
 # ============================================================================
+
 
 def get_topic_mastery_levels(username: str) -> pl.DataFrame:
     """
@@ -640,7 +628,7 @@ def get_topic_mastery_levels(username: str) -> pl.DataFrame:
         GROUP BY topic
         ORDER BY level ASC, accuracy ASC
         """,
-        (username,)
+        (username,),
     )
 
     rows = cursor.fetchall()
