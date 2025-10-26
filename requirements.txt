@@ -3,3 +3,5 @@ polars
 streamlit-authenticator
 plotnine
 beautifulsoup4
+psycopg2-binary
+python-dotenv

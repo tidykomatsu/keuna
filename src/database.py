@@ -1,462 +1,589 @@
 """
-SQLite database for user progress tracking
+Database operations for EUNACOM Quiz App - PostgreSQL/Supabase Version
+All data persistence with automatic performance tracking
 """
 
-import sqlite3
-from datetime import datetime
-from pathlib import Path
+import psycopg2
+from psycopg2.extras import RealDictCursor, Json
 import polars as pl
-import json
+import streamlit as st
+import os
+from datetime import datetime
 
 # ============================================================================
-# Database Setup
+# Connection Management
 # ============================================================================
 
-DB_PATH = Path("../users.db")
+def get_connection():
+    """Get PostgreSQL connection from Supabase"""
+    try:
+        connection_string = st.secrets["DATABASE_URL"]
+    except:
+        connection_string = os.getenv("DATABASE_URL")
 
+    assert connection_string, "DATABASE_URL not found in secrets or environment"
+
+    return psycopg2.connect(connection_string)
+
+
+# ============================================================================
+# Database Initialization
+# ============================================================================
 
 def init_database():
-    """Create database tables if they don't exist"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-
-    # User progress table
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS user_progress (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT NOT NULL,
-            question_id TEXT NOT NULL,
-            selected_answer TEXT NOT NULL,
-            is_correct INTEGER NOT NULL,
-            timestamp TEXT NOT NULL,
-            UNIQUE(username, question_id, timestamp)
-        )
-        """
-    )
-
-    # User statistics cache
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS user_stats (
-            username TEXT PRIMARY KEY,
-            total_answered INTEGER DEFAULT 0,
-            total_correct INTEGER DEFAULT 0,
-            last_updated TEXT
-        )
-        """
-    )
-
-    # Flashcard reviews table
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS flashcard_reviews (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT NOT NULL,
-            question_id TEXT NOT NULL,
-            review_result TEXT NOT NULL,
-            timestamp TEXT NOT NULL
-        )
-        """
-    )
-
-    # Custom flashcards table
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS custom_flashcards (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT NOT NULL,
-            front_text TEXT NOT NULL,
-            back_text TEXT NOT NULL,
-            topic TEXT,
-            created_at TEXT NOT NULL,
-            is_archived INTEGER DEFAULT 0,
-            UNIQUE(username, front_text)
-        )
-        """
-    )
-
-    conn.commit()
-    conn.close()
-
-
-# ============================================================================
-# Progress Tracking
-# ============================================================================
-
-
-def save_answer(username: str, question_id: str, selected_answer: str, is_correct: bool):
-    """Save user answer to database"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-
-    timestamp = datetime.now().isoformat()
-
-    cursor.execute(
-        """
-        INSERT INTO user_progress (username, question_id, selected_answer, is_correct, timestamp)
-        VALUES (?, ?, ?, ?, ?)
-        """,
-        (username, question_id, selected_answer, int(is_correct), timestamp),
-    )
-
-    # Update stats
-    cursor.execute(
-        """
-        INSERT INTO user_stats (username, total_answered, total_correct, last_updated)
-        VALUES (?, 1, ?, ?)
-        ON CONFLICT(username) DO UPDATE SET
-            total_answered = total_answered + 1,
-            total_correct = total_correct + ?,
-            last_updated = ?
-        """,
-        (username, int(is_correct), timestamp, int(is_correct), timestamp),
-    )
-
-    conn.commit()
-    conn.close()
-
-
-def get_user_stats(username: str) -> dict:
-    """Get user statistics"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-
-    cursor.execute(
-        """
-        SELECT total_answered, total_correct, last_updated
-        FROM user_stats
-        WHERE username = ?
-        """,
-        (username,),
-    )
-
-    result = cursor.fetchone()
-    conn.close()
-
-    if result:
-        total_answered, total_correct, last_updated = result
-        accuracy = (total_correct / total_answered * 100) if total_answered > 0 else 0
-        return {
-            "total_answered": total_answered,
-            "total_correct": total_correct,
-            "accuracy": accuracy,
-            "last_updated": last_updated,
-        }
-
-    return {"total_answered": 0, "total_correct": 0, "accuracy": 0, "last_updated": None}
-
-
-def get_answered_questions(username: str) -> set:
-    """Get set of question IDs already answered by user"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-
-    cursor.execute(
-        """
-        SELECT DISTINCT question_id
-        FROM user_progress
-        WHERE username = ?
-        """,
-        (username,),
-    )
-
-    result = {row[0] for row in cursor.fetchall()}
-    conn.close()
-
-    return result
-
-
-def get_user_history(username: str, limit: int = 50) -> pl.DataFrame:
-    """Get user answer history as Polars DataFrame"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-
-    query = """
-    SELECT question_id, selected_answer, is_correct, timestamp
-    FROM user_progress
-    WHERE username = ?
-    ORDER BY timestamp DESC
-    LIMIT ?
     """
+    Initialize database - tables are created via Supabase SQL editor
+    This function just ensures connection works
+    """
+    try:
+        conn = get_connection()
+        conn.close()
+        return True
+    except Exception as e:
+        st.error(f"❌ Database connection failed: {e}")
+        return False
 
-    cursor.execute(query, (username, limit))
+
+# ============================================================================
+# QUESTION MANAGEMENT
+# ============================================================================
+
+def insert_questions_from_json(questions: list[dict]) -> tuple[int, int]:
+    """
+    Insert questions from JSON structure into database
+    Returns (success_count, error_count)
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    success_count = 0
+    error_count = 0
+
+    for question in questions:
+        try:
+            cursor.execute(
+                """
+                INSERT INTO questions (
+                    question_id, question_number, topic, question_text,
+                    answer_options, correct_answer, explanation,
+                    source_file, source_type
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (question_id) DO UPDATE SET
+                    question_number = EXCLUDED.question_number,
+                    topic = EXCLUDED.topic,
+                    question_text = EXCLUDED.question_text,
+                    answer_options = EXCLUDED.answer_options,
+                    correct_answer = EXCLUDED.correct_answer,
+                    explanation = EXCLUDED.explanation,
+                    source_file = EXCLUDED.source_file,
+                    source_type = EXCLUDED.source_type,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (
+                    question["question_id"],
+                    question["question_number"],
+                    question["topic"],
+                    question["question_text"],
+                    Json(question["answer_options"]),  # Convert list to JSONB
+                    question["correct_answer"],
+                    question["explanation"],
+                    question.get("source_file"),
+                    question.get("source_type")
+                )
+            )
+            success_count += 1
+        except Exception as e:
+            error_count += 1
+            st.warning(f"Error inserting question {question['question_id']}: {e}")
+            conn.rollback()
+            cursor = conn.cursor()  # Get new cursor after rollback
+            continue
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    return success_count, error_count
+
+
+def get_all_questions() -> pl.DataFrame:
+    """
+    Load all questions from database as Polars DataFrame
+    """
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+    cursor.execute("""
+        SELECT
+            question_id,
+            question_number,
+            topic,
+            question_text,
+            answer_options,
+            correct_answer,
+            explanation,
+            source_file,
+            source_type
+        FROM questions
+        ORDER BY question_number
+    """)
+
     rows = cursor.fetchall()
+    cursor.close()
     conn.close()
 
     if not rows:
-        return pl.DataFrame({
-            "question_id": [],
-            "selected_answer": [],
-            "is_correct": [],
-            "timestamp": []
+        return pl.DataFrame(schema={
+            "question_id": pl.Utf8,
+            "question_number": pl.Utf8,
+            "topic": pl.Utf8,
+            "question_text": pl.Utf8,
+            "answer_options": pl.List(pl.Struct([
+                pl.Field("letter", pl.Utf8),
+                pl.Field("text", pl.Utf8),
+                pl.Field("is_correct", pl.Boolean)
+            ])),
+            "correct_answer": pl.Utf8,
+            "explanation": pl.Utf8,
+            "source_file": pl.Utf8,
+            "source_type": pl.Utf8
         })
 
-    df = pl.DataFrame({
-        "question_id": [r[0] for r in rows],
-        "selected_answer": [r[1] for r in rows],
-        "is_correct": [r[2] for r in rows],
-        "timestamp": [r[3] for r in rows]
-    })
+    return pl.DataFrame(rows)
+
+
+def get_questions_by_topic(topic: str) -> pl.DataFrame:
+    """Get questions filtered by topic"""
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+    cursor.execute(
+        """
+        SELECT * FROM questions
+        WHERE topic = %s
+        ORDER BY question_number
+        """,
+        (topic,)
+    )
+
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    return pl.DataFrame(rows) if rows else pl.DataFrame()
+
+
+def get_question_by_id(question_id: str) -> dict:
+    """Get single question by ID"""
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+    cursor.execute(
+        "SELECT * FROM questions WHERE question_id = %s",
+        (question_id,)
+    )
+
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+
+    return dict(row) if row else None
+
+
+def get_question_count() -> int:
+    """Get total number of questions in database"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT COUNT(*) FROM questions")
+    count = cursor.fetchone()[0]
+
+    cursor.close()
+    conn.close()
+
+    return count
+
+
+# ============================================================================
+# USER ANSWERS
+# ============================================================================
+
+def save_answer(username: str, question_id: str, user_answer: str, is_correct: bool):
+    """
+    Save user answer - trigger automatically updates performance stats
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        INSERT INTO user_answers (username, question_id, user_answer, is_correct)
+        VALUES (%s, %s, %s, %s)
+        """,
+        (username, question_id, user_answer, is_correct)
+    )
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def get_answered_questions(username: str) -> set:
+    """Get set of question IDs user has answered"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT DISTINCT question_id FROM user_answers WHERE username = %s",
+        (username,)
+    )
+
+    results = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    return {row[0] for row in results}
+
+
+def get_user_stats(username: str) -> dict:
+    """Get overall user statistics"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT
+            COUNT(*) as total_answered,
+            SUM(CASE WHEN is_correct THEN 1 ELSE 0 END) as total_correct
+        FROM user_answers
+        WHERE username = %s
+        """,
+        (username,)
+    )
+
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+
+    total_answered = row[0] or 0
+    total_correct = row[1] or 0
+    accuracy = (total_correct / total_answered * 100) if total_answered > 0 else 0
+
+    return {
+        "total_answered": total_answered,
+        "total_correct": total_correct,
+        "accuracy": accuracy
+    }
+
+
+def get_stats_by_topic(username: str, questions_df: pl.DataFrame = None) -> pl.DataFrame:
+    """Get statistics grouped by topic"""
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+    cursor.execute(
+        """
+        SELECT
+            q.topic,
+            COUNT(*) as total,
+            SUM(CASE WHEN ua.is_correct THEN 1 ELSE 0 END) as correct
+        FROM user_answers ua
+        JOIN questions q ON ua.question_id = q.question_id
+        WHERE ua.username = %s
+        GROUP BY q.topic
+        ORDER BY correct::float / COUNT(*) ASC
+        """,
+        (username,)
+    )
+
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    if not rows:
+        return pl.DataFrame()
+
+    df = pl.DataFrame(rows)
+    df = df.with_columns([
+        (pl.col("correct") / pl.col("total") * 100).alias("accuracy")
+    ])
 
     return df
 
 
-def get_stats_by_topic(username: str, questions_df: pl.DataFrame) -> pl.DataFrame:
-    """Calculate statistics grouped by topic"""
-    conn = sqlite3.connect(DB_PATH)
+def reset_user_progress(username: str):
+    """Delete all user progress (answers and performance, not custom flashcards)"""
+    conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute(
-        "SELECT question_id, is_correct FROM user_progress WHERE username = ?",
-        (username,)
-    )
+    cursor.execute("DELETE FROM user_answers WHERE username = %s", (username,))
+    cursor.execute("DELETE FROM user_question_performance WHERE username = %s", (username,))
+    cursor.execute("DELETE FROM flashcard_reviews WHERE username = %s", (username,))
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+# ============================================================================
+# USER PERFORMANCE TRACKING
+# ============================================================================
+
+def get_user_performance(username: str, limit: int = None) -> pl.DataFrame:
+    """
+    Get user performance stats for all questions
+    Used by smart question selector
+    """
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+    query = """
+        SELECT
+            question_id,
+            topic,
+            total_attempts,
+            correct_attempts,
+            incorrect_attempts,
+            last_answered_at,
+            streak,
+            priority_score
+        FROM user_question_performance
+        WHERE username = %s
+        ORDER BY priority_score DESC
+    """
+
+    if limit:
+        query += f" LIMIT {limit}"
+
+    cursor.execute(query, (username,))
+
     rows = cursor.fetchall()
+    cursor.close()
     conn.close()
 
     if not rows:
-        return pl.DataFrame({"topic": [], "total": [], "correct": [], "accuracy": []})
+        return pl.DataFrame()
 
-    history_df = pl.DataFrame({
-        "question_id": [r[0] for r in rows],
-        "is_correct": [r[1] for r in rows]
-    })
-
-    stats_df = (
-        history_df.join(questions_df.select(["question_id", "topic"]), on="question_id", how="left")
-        .group_by("topic")
-        .agg([pl.count().alias("total"), pl.col("is_correct").sum().alias("correct")])
-        .with_columns((pl.col("correct") / pl.col("total") * 100).alias("accuracy"))
-        .sort("accuracy", descending=False)
-    )
-
-    return stats_df
+    return pl.DataFrame(rows)
 
 
-def reset_user_progress(username: str):
-    """Reset all progress for a user"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-
-    cursor.execute("DELETE FROM user_progress WHERE username = ?", (username,))
-    cursor.execute("DELETE FROM user_stats WHERE username = ?", (username,))
-
-    conn.commit()
-    conn.close()
-
-
-# ============================================================================
-# Flashcard Progress Tracking
-# ============================================================================
-
-
-def save_flashcard_review(username: str, question_id: str, result: str):
-    """Save flashcard review (wrong, partial, correct)"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-
-    timestamp = datetime.now().isoformat()
+def get_topic_performance(username: str) -> pl.DataFrame:
+    """Get aggregated performance by topic"""
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
 
     cursor.execute(
         """
-        INSERT INTO flashcard_reviews (username, question_id, review_result, timestamp)
-        VALUES (?, ?, ?, ?)
+        SELECT
+            topic,
+            COUNT(*) as questions_answered,
+            SUM(correct_attempts) as total_correct,
+            SUM(total_attempts) as total_attempts,
+            AVG(priority_score) as avg_priority
+        FROM user_question_performance
+        WHERE username = %s
+        GROUP BY topic
+        ORDER BY avg_priority DESC
         """,
-        (username, question_id, result, timestamp),
+        (username,)
+    )
+
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    if not rows:
+        return pl.DataFrame()
+
+    df = pl.DataFrame(rows)
+    df = df.with_columns([
+        (pl.col("total_correct") / pl.col("total_attempts") * 100).alias("accuracy")
+    ])
+
+    return df
+
+
+# ============================================================================
+# FLASHCARD OPERATIONS
+# ============================================================================
+
+def save_flashcard_review(username: str, card_id: str, rating: str):
+    """Save flashcard review"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        INSERT INTO flashcard_reviews (username, card_id, rating)
+        VALUES (%s, %s, %s)
+        """,
+        (username, card_id, rating)
     )
 
     conn.commit()
+    cursor.close()
     conn.close()
 
 
 def get_flashcard_stats(username: str) -> dict:
     """Get flashcard review statistics"""
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute(
         """
-        SELECT COUNT(*) as total,
-               SUM(CASE WHEN review_result = 'correct' THEN 1 ELSE 0 END) as correct
+        SELECT
+            COUNT(*) as total_reviewed,
+            SUM(CASE WHEN rating = 'correct' THEN 1 ELSE 0 END) as correct_count
         FROM flashcard_reviews
-        WHERE username = ?
+        WHERE username = %s
         """,
-        (username,),
+        (username,)
     )
 
-    result = cursor.fetchone()
+    row = cursor.fetchone()
+    cursor.close()
     conn.close()
 
-    if result:
-        total, correct = result
-        return {"total_reviewed": total, "correct_count": correct}
-
-    return {"total_reviewed": 0, "correct_count": 0}
+    return {
+        "total_reviewed": row[0] or 0,
+        "correct_count": row[1] or 0
+    }
 
 
 # ============================================================================
-# Custom Flashcards CRUD
+# CUSTOM FLASHCARDS
 # ============================================================================
-
 
 def create_custom_flashcard(username: str, front_text: str, back_text: str, topic: str = None) -> bool:
-    """Create a new custom flashcard"""
-    conn = sqlite3.connect(DB_PATH)
+    """Create new custom flashcard"""
+    conn = get_connection()
     cursor = conn.cursor()
-
-    timestamp = datetime.now().isoformat()
 
     try:
         cursor.execute(
             """
-            INSERT INTO custom_flashcards (username, front_text, back_text, topic, created_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO custom_flashcards (username, front_text, back_text, topic)
+            VALUES (%s, %s, %s, %s)
             """,
-            (username, front_text, back_text, topic, timestamp),
+            (username, front_text, back_text, topic)
         )
         conn.commit()
         success = True
-    except sqlite3.IntegrityError:
+    except psycopg2.IntegrityError:
+        conn.rollback()
         success = False
     finally:
+        cursor.close()
         conn.close()
 
     return success
 
 
-def get_custom_flashcards(username: str, include_archived: bool = False) -> pl.DataFrame:
-    """Get all custom flashcards for a user"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+def get_custom_flashcards(username: str) -> pl.DataFrame:
+    """Get all custom flashcards for user"""
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
 
-    if include_archived:
-        query = """
-        SELECT id, front_text, back_text, topic, created_at, is_archived
-        FROM custom_flashcards
-        WHERE username = ?
-        ORDER BY created_at DESC
+    cursor.execute(
         """
-    else:
-        query = """
-        SELECT id, front_text, back_text, topic, created_at, is_archived
+        SELECT id, front_text, back_text, topic, created_at
         FROM custom_flashcards
-        WHERE username = ? AND is_archived = 0
+        WHERE username = %s AND archived = FALSE
         ORDER BY created_at DESC
-        """
+        """,
+        (username,)
+    )
 
-    cursor.execute(query, (username,))
     rows = cursor.fetchall()
+    cursor.close()
     conn.close()
 
     if not rows:
-        return pl.DataFrame({
-            "id": [],
-            "front_text": [],
-            "back_text": [],
-            "topic": [],
-            "created_at": [],
-            "is_archived": []
+        return pl.DataFrame(schema={
+            "id": pl.Int64,
+            "front_text": pl.Utf8,
+            "back_text": pl.Utf8,
+            "topic": pl.Utf8,
+            "created_at": pl.Datetime
         })
 
-    df = pl.DataFrame({
-        "id": [r[0] for r in rows],
-        "front_text": [r[1] for r in rows],
-        "back_text": [r[2] for r in rows],
-        "topic": [r[3] for r in rows],
-        "created_at": [r[4] for r in rows],
-        "is_archived": [r[5] for r in rows]
-    })
-
-    return df
+    return pl.DataFrame(rows)
 
 
 def update_custom_flashcard(card_id: int, front_text: str, back_text: str, topic: str = None) -> bool:
-    """Update an existing custom flashcard"""
-    conn = sqlite3.connect(DB_PATH)
+    """Update existing flashcard"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            """
+            UPDATE custom_flashcards
+            SET front_text = %s, back_text = %s, topic = %s
+            WHERE id = %s
+            """,
+            (front_text, back_text, topic, card_id)
+        )
+        conn.commit()
+        success = True
+    except:
+        conn.rollback()
+        success = False
+    finally:
+        cursor.close()
+        conn.close()
+
+    return success
+
+
+def archive_custom_flashcard(card_id: int):
+    """Archive (soft delete) flashcard"""
+    conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute(
-        """
-        UPDATE custom_flashcards
-        SET front_text = ?, back_text = ?, topic = ?
-        WHERE id = ?
-        """,
-        (front_text, back_text, topic, card_id),
+        "UPDATE custom_flashcards SET archived = TRUE WHERE id = %s",
+        (card_id,)
     )
 
-    success = cursor.rowcount > 0
     conn.commit()
+    cursor.close()
     conn.close()
-
-    return success
-
-
-def archive_custom_flashcard(card_id: int) -> bool:
-    """Soft delete (archive) a custom flashcard"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-
-    cursor.execute(
-        """
-        UPDATE custom_flashcards
-        SET is_archived = 1
-        WHERE id = ?
-        """,
-        (card_id,),
-    )
-
-    success = cursor.rowcount > 0
-    conn.commit()
-    conn.close()
-
-    return success
-
-
-def delete_custom_flashcard(card_id: int) -> bool:
-    """Permanently delete a custom flashcard"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-
-    cursor.execute("DELETE FROM custom_flashcards WHERE id = ?", (card_id,))
-
-    success = cursor.rowcount > 0
-    conn.commit()
-    conn.close()
-
-    return success
 
 
 def export_custom_flashcards_json(username: str) -> str:
-    """Export custom flashcards to JSON string"""
-    df = get_custom_flashcards(username, include_archived=False)
+    """Export custom flashcards as JSON"""
+    import json
 
-    if len(df) == 0:
+    cards_df = get_custom_flashcards(username)
+
+    if len(cards_df) == 0:
         return "[]"
 
-    cards_list = df.to_dicts()
+    cards_list = cards_df.select(["front_text", "back_text", "topic"]).to_dicts()
     return json.dumps(cards_list, ensure_ascii=False, indent=2)
 
 
-def import_custom_flashcards_json(username: str, json_data: str) -> tuple[int, int]:
-    """Import custom flashcards from JSON string. Returns (success_count, error_count)"""
-    try:
-        cards = json.loads(json_data)
-    except json.JSONDecodeError:
-        return 0, 0
+def import_custom_flashcards_json(username: str, json_data: str) -> tuple:
+    """Import custom flashcards from JSON"""
+    import json
 
+    cards = json.loads(json_data)
     success_count = 0
     error_count = 0
 
     for card in cards:
-        front = card.get("front_text", "")
-        back = card.get("back_text", "")
-        topic = card.get("topic")
+        success = create_custom_flashcard(
+            username,
+            card["front_text"],
+            card["back_text"],
+            card.get("topic")
+        )
 
-        if front and back:
-            if create_custom_flashcard(username, front, back, topic):
-                success_count += 1
-            else:
-                error_count += 1
+        if success:
+            success_count += 1
         else:
             error_count += 1
 
