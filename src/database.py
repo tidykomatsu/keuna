@@ -588,3 +588,88 @@ def import_custom_flashcards_json(username: str, json_data: str) -> tuple:
             error_count += 1
 
     return success_count, error_count
+
+
+# ============================================================================
+# TOPIC MASTERY FUNCTIONS
+# ============================================================================
+
+def get_topic_mastery_levels(username: str) -> pl.DataFrame:
+    """
+    Get mastery levels for all topics
+    Calculated from user_question_performance
+
+    Returns DataFrame with:
+        - topic
+        - level (0-5)
+        - accuracy
+        - questions_answered
+        - avg_priority
+    """
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+    cursor.execute(
+        """
+        SELECT
+            topic,
+            COUNT(*) as questions_answered,
+            AVG(CASE WHEN total_attempts > 0
+                THEN (correct_attempts::float / total_attempts * 100)
+                ELSE 0 END) as accuracy,
+            AVG(priority_score) as avg_priority,
+            -- Calculate level (0-5)
+            CASE
+                WHEN AVG(CASE WHEN total_attempts > 0
+                    THEN (correct_attempts::float / total_attempts * 100)
+                    ELSE 0 END) >= 90 AND COUNT(*) >= 20 THEN 5
+                WHEN AVG(CASE WHEN total_attempts > 0
+                    THEN (correct_attempts::float / total_attempts * 100)
+                    ELSE 0 END) >= 80 AND COUNT(*) >= 15 THEN 4
+                WHEN AVG(CASE WHEN total_attempts > 0
+                    THEN (correct_attempts::float / total_attempts * 100)
+                    ELSE 0 END) >= 70 AND COUNT(*) >= 10 THEN 3
+                WHEN AVG(CASE WHEN total_attempts > 0
+                    THEN (correct_attempts::float / total_attempts * 100)
+                    ELSE 0 END) >= 60 AND COUNT(*) >= 5 THEN 2
+                WHEN COUNT(*) >= 3 THEN 1
+                ELSE 0
+            END as level
+        FROM user_question_performance
+        WHERE username = %s
+        GROUP BY topic
+        ORDER BY level ASC, accuracy ASC
+        """,
+        (username,)
+    )
+
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    if not rows:
+        return pl.DataFrame()
+
+    return pl.DataFrame(rows)
+
+
+def get_weakest_topic(username: str) -> str:
+    """
+    Get user's weakest topic (lowest mastery level)
+    Returns topic name or None
+    """
+    mastery_df = get_topic_mastery_levels(username)
+
+    if len(mastery_df) == 0:
+        # No data: return random topic
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT DISTINCT topic FROM questions LIMIT 1")
+        result = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        return result[0] if result else None
+
+    # Return topic with lowest level
+    weakest = mastery_df.head(1)
+    return weakest["topic"][0]
