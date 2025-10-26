@@ -11,9 +11,10 @@ from src.database import (
     get_answered_questions,
     reset_user_progress,
     get_user_stats,
+    get_topic_mastery_levels,
 )
 from src.utils import load_questions
-from src.question_selector import select_next_question
+from src.question_selector import select_next_question, get_all_topic_masteries
 
 # ============================================================================
 # Page Config
@@ -138,6 +139,28 @@ def main():
             st.metric("Respondidas", stats["total_answered"])
         with col2:
             st.metric("Precisión", f"{stats['accuracy']:.1f}%")
+
+        st.divider()
+
+        # Topic Mastery Levels
+        st.markdown("### 🏆 Niveles por Tema")
+        mastery_df = get_all_topic_masteries(st.session_state.username)
+
+        if len(mastery_df) > 0:
+            # Show top 3 weakest topics
+            for row in mastery_df.head(3).iter_rows(named=True):
+                stars = row['stars']
+                accuracy = row.get('accuracy', 0)
+                st.caption(f"{stars} **{row['topic']}** ({accuracy:.0f}%)")
+
+            if len(mastery_df) > 3:
+                with st.expander("Ver todos los temas"):
+                    for row in mastery_df.tail(len(mastery_df) - 3).iter_rows(named=True):
+                        stars = row['stars']
+                        accuracy = row.get('accuracy', 0)
+                        st.caption(f"{stars} **{row['topic']}** ({accuracy:.0f}%)")
+        else:
+            st.caption("Comienza a responder para ver tus niveles")
 
         st.divider()
 
