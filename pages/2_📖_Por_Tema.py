@@ -5,7 +5,7 @@ Topic-Based Practice Mode - With Smart Question Selection
 import streamlit as st
 import polars as pl
 
-from src.auth import require_auth
+from src.auth import require_auth, show_logout_button
 from src.database import (
     save_answer,
     get_answered_questions,
@@ -123,7 +123,6 @@ def display_question(question: dict):
 def main():
     """Topic-based practice"""
     st.title("📖 Práctica por Tema")
-    st.markdown("Enfócate en temas específicos - el sistema priorizará preguntas que necesitas repasar")
     st.markdown("---")
 
     init_state()
@@ -166,6 +165,9 @@ def main():
             index=0,
             help="Adaptativo: Mezcla inteligente basada en tu rendimiento en este tema"
         )
+
+        st.divider()
+        show_logout_button()
 
     # Reset question if topic changed
     if st.session_state.selected_topic != selected_topic:

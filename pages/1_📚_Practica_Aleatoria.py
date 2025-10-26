@@ -5,7 +5,7 @@ Random Practice Mode - With Smart Question Selection
 import streamlit as st
 import polars as pl
 
-from src.auth import require_auth
+from src.auth import require_auth, show_logout_button
 from src.database import (
     save_answer,
     get_answered_questions,
@@ -123,7 +123,6 @@ def display_question(question: dict):
 def main():
     """Main practice mode logic"""
     st.title("📚 Práctica Aleatoria")
-    st.markdown("El sistema priorizará preguntas que necesitas repasar")
     st.markdown("---")
 
     init_state()
@@ -155,6 +154,9 @@ def main():
             index=0,
             help="Adaptativo: Mezcla inteligente basada en tu rendimiento"
         )
+
+        st.divider()
+        show_logout_button()
 
     # Get current question using smart selector
     if st.session_state.current_question is None or st.session_state.refresh_question:

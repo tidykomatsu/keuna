@@ -5,7 +5,7 @@ Simulated Exam Mode - Polished
 import streamlit as st
 import polars as pl
 
-from src.auth import require_auth
+from src.auth import require_auth, show_logout_button
 from src.database import save_answer, get_user_stats
 from src.utils import load_questions
 
@@ -46,15 +46,6 @@ def show_exam_setup(questions_df, questions_dict):
     """Display exam configuration"""
 
     st.markdown("### ⚙️ Configuración del Examen")
-
-    st.info("""
-    **Modo Examen Simulado:**
-    - ✅ Sin retroalimentación inmediata
-    - ✅ Navega entre preguntas libremente
-    - ✅ Revisa resultados al finalizar
-    - ✅ Practica bajo presión como en el examen real
-    """)
-
     st.markdown("---")
 
     col1, col2 = st.columns(2)
@@ -310,6 +301,7 @@ def main():
             st.metric("Precisión", f"{stats['accuracy']:.1f}%")
 
         st.divider()
+        show_logout_button()
 
     if st.session_state.exam_finished:
         show_exam_results()

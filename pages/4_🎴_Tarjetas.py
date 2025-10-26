@@ -5,7 +5,7 @@ Flashcards Study Mode - With Custom Cards Support
 import streamlit as st
 import polars as pl
 
-from src.auth import require_auth
+from src.auth import require_auth, show_logout_button
 from src.database import (
     save_flashcard_review,
     get_flashcard_stats,
@@ -149,14 +149,6 @@ def next_card():
 def setup_deck(questions_df: pl.DataFrame, questions_dict: dict):
     """Setup flashcard deck based on user selection"""
     st.markdown("### ⚙️ Configuración del Mazo")
-
-    st.info("""
-    **Modo Tarjetas de Estudio:**
-    - 🔄 Repasa conceptos de forma activa
-    - ✅ Autoevalúa tu nivel de conocimiento
-    - 📊 Las tarjetas mal respondidas aparecen más seguido
-    """)
-
     st.markdown("---")
 
     # Source selection
@@ -254,7 +246,6 @@ def setup_deck(questions_df: pl.DataFrame, questions_dict: dict):
 def main():
     """Main entry point for flashcards page"""
     st.title("🎴 Tarjetas de Estudio")
-    st.markdown("Repasa y memoriza con el método de tarjetas")
     st.markdown("---")
 
     init_flashcard_state()
@@ -282,6 +273,9 @@ def main():
             st.metric("Revisadas", fc_stats.get("total_reviewed", 0))
         with col2:
             st.metric("Dominadas", fc_stats.get("correct_count", 0))
+
+        st.divider()
+        show_logout_button()
 
     if not st.session_state.fc_deck:
         setup_deck(questions_df, questions_dict)

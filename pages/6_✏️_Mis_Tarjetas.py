@@ -6,7 +6,7 @@ import streamlit as st
 import polars as pl
 from datetime import datetime
 
-from src.auth import require_auth
+from src.auth import require_auth, show_logout_button
 from src.database import (
     create_custom_flashcard,
     get_custom_flashcards,
@@ -273,13 +273,6 @@ def show_export_import():
     """Display export/import functionality"""
     st.markdown("### 💾 Exportar / Importar")
 
-    st.info("""
-    **Respalda tus tarjetas:**
-    - 📥 Exporta a JSON para guardar una copia de seguridad
-    - 📤 Importa para restaurar o transferir entre usuarios
-    - ⚠️ Importante si usas Streamlit Cloud (los datos se pueden borrar)
-    """)
-
     col1, col2 = st.columns(2)
 
     with col1:
@@ -332,7 +325,6 @@ def show_export_import():
 def main():
     """Custom flashcards management page"""
     st.title("✏️ Mis Tarjetas Personalizadas")
-    st.markdown("Crea y gestiona tus propias tarjetas de estudio")
     st.markdown("---")
 
     init_state()
@@ -354,6 +346,9 @@ def main():
         cards_df = get_custom_flashcards(st.session_state.username)
         st.markdown("### ✏️ Mis Tarjetas")
         st.metric("Total", len(cards_df))
+
+        st.divider()
+        show_logout_button()
 
     # Main actions
     col1, col2 = st.columns(2)

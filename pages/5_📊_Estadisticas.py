@@ -29,7 +29,6 @@ require_auth()
 def main():
     """Statistics dashboard"""
     st.title("📊 Estadísticas de Progreso")
-    st.markdown("Analiza tu desempeño y encuentra áreas de mejora")
     st.markdown("---")
 
     questions_df, _ = load_questions()

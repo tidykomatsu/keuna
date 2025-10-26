@@ -118,7 +118,7 @@ def extract_all_guevara() -> list[dict]:
     project_root = Path(__file__).parent.parent
     raw_dir = project_root / "data" / "raw" / "guevara"
 
-    html_files = sorted(list(raw_dir.glob("*.html")) + list(raw_dir.glob("*.htm")))
+    html_files = sorted(list(raw_dir.rglob("*.html")) + list(raw_dir.rglob("*.htm")))
 
     print(f"\n{'='*60}")
     print("EXTRACTING: GUEVARA")

@@ -83,3 +83,9 @@ def logout():
     st.session_state.username = None
     st.session_state.name = None
     st.rerun()
+
+
+def show_logout_button():
+    """Display logout button in sidebar"""
+    if st.sidebar.button("🚪 Cerrar Sesión", use_container_width=True, type="secondary"):
+        logout()
