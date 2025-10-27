@@ -13,20 +13,42 @@ from google import genai
 # ============================================================================
 # Configuration
 # ============================================================================
+from dotenv import load_dotenv
+
+load_dotenv()
 
 TEST_MODE = False  # ← Set to False for full run
 TEST_ROWS = 15
 
 CATEGORIES = [
-    'Gastroenterología', 'Nefrología', 'Cardiología', 'Infectología',
-    'Diabetes', 'Endocrinología', 'Respiratorio', 'Neurología',
-    'Reumatología', 'Hematología', 'Geriatría', 'Psiquiatría',
-    'Salud Pública', 'Dermatología', 'Otorrinolaringología', 'Oftalmología',
-    'Traumatología', 'Urología', 'Cirugía', 'Anestesiología',
-    'Obstetricia', 'Ginecología', 'Pediatría', 'Medicina Legal', 'Other'
+    "Gastroenterología",
+    "Nefrología",
+    "Cardiología",
+    "Infectología",
+    "Diabetes",
+    "Endocrinología",
+    "Respiratorio",
+    "Neurología",
+    "Reumatología",
+    "Hematología",
+    "Geriatría",
+    "Psiquiatría",
+    "Salud Pública",
+    "Dermatología",
+    "Otorrinolaringología",
+    "Oftalmología",
+    "Traumatología",
+    "Urología",
+    "Cirugía",
+    "Anestesiología",
+    "Obstetricia",
+    "Ginecología",
+    "Pediatría",
+    "Medicina Legal",
+    "Other",
 ]
 
-API_KEY = "AIzaSyCYBKirixI8m6zo-QpGhJaNnEpTm1iEe1o"#os.getenv("GEMINI_API_KEY")
+API_KEY = os.getenv("GEMINI_API_KEY")
 assert API_KEY, "Set GEMINI_API_KEY environment variable"
 
 client = genai.Client(api_key=API_KEY)
@@ -46,6 +68,7 @@ CHECKPOINT_INTERVAL = 5  # Save every 5 questions
 # ============================================================================
 # Load and Merge
 # ============================================================================
+
 
 def load_and_merge() -> pl.DataFrame:
     """Load both JSON files and merge into single DataFrame"""
@@ -73,6 +96,7 @@ def load_and_merge() -> pl.DataFrame:
 # Categorization
 # ============================================================================
 
+
 def build_prompt(question_text: str, correct_answer: str, explanation: str) -> str:
     """Build categorization prompt"""
 
@@ -99,10 +123,7 @@ def categorize_question(question_text: str, correct_answer: str, explanation: st
 
     for attempt in range(3):
         try:
-            response = client.models.generate_content(
-                model=MODEL,
-                contents=prompt
-            )
+            response = client.models.generate_content(model=MODEL, contents=prompt)
 
             category = response.text.strip()
 
@@ -131,6 +152,7 @@ def categorize_question(question_text: str, correct_answer: str, explanation: st
 # Progress Tracking
 # ============================================================================
 
+
 def format_time(seconds: float) -> str:
     """Format seconds into readable time string"""
 
@@ -146,13 +168,7 @@ def format_time(seconds: float) -> str:
         return f"{hours}h {mins}m"
 
 
-def print_progress(
-        current: int,
-        total: int,
-        category: str,
-        elapsed: float,
-        avg_time: float
-):
+def print_progress(current: int, total: int, category: str, elapsed: float, avg_time: float):
     """Print detailed progress information"""
 
     pct = (current / total) * 100
@@ -167,15 +183,13 @@ def print_progress(
     filled = int(bar_length * current / total)
     bar = "█" * filled + "░" * (bar_length - filled)
 
-    print(
-        f"[{current}/{total}] {bar} {pct:5.1f}% | "
-        f"⏱️ {elapsed_str} | ETA {eta_str} | ✅ {category}"
-    )
+    print(f"[{current}/{total}] {bar} {pct:5.1f}% | " f"⏱️ {elapsed_str} | ETA {eta_str} | ✅ {category}")
 
 
 # ============================================================================
 # Batch Processing with Checkpointing
 # ============================================================================
+
 
 def load_checkpoint() -> dict:
     """Load checkpoint if exists"""
@@ -249,11 +263,7 @@ def categorize_dataframe(df: pl.DataFrame, delay: float = 1.0) -> pl.DataFrame:
         # Start timing this question
         q_start = time.time()
 
-        category = categorize_question(
-            row["question_text"],
-            row["correct_answer"],
-            row["explanation"]
-        )
+        category = categorize_question(row["question_text"], row["correct_answer"], row["explanation"])
 
         categorized_dict[question_id] = category
         questions_processed += 1
@@ -294,14 +304,9 @@ def categorize_dataframe(df: pl.DataFrame, delay: float = 1.0) -> pl.DataFrame:
     print()
 
     # Create category column
-    categories = [
-        categorized_dict.get(row["question_id"], "Other")
-        for row in df.iter_rows(named=True)
-    ]
+    categories = [categorized_dict.get(row["question_id"], "Other") for row in df.iter_rows(named=True)]
 
-    result_df = df.with_columns(
-        pl.Series("gemini_category", categories)
-    )
+    result_df = df.with_columns(pl.Series("gemini_category", categories))
 
     return result_df
 
@@ -310,14 +315,11 @@ def categorize_dataframe(df: pl.DataFrame, delay: float = 1.0) -> pl.DataFrame:
 # Statistics
 # ============================================================================
 
+
 def print_stats(df: pl.DataFrame):
     """Print categorization statistics"""
 
-    stats = (
-        df.group_by("gemini_category")
-        .agg(pl.len().alias("count"))
-        .sort("count", descending=True)
-    )
+    stats = df.group_by("gemini_category").agg(pl.len().alias("count")).sort("count", descending=True)
 
     print("=" * 60)
     print("📊 CATEGORIZATION RESULTS")
@@ -335,6 +337,7 @@ def print_stats(df: pl.DataFrame):
 # ============================================================================
 # Main
 # ============================================================================
+
 
 def main():
     """Main pipeline"""
@@ -359,9 +362,7 @@ def main():
     df_categorized = categorize_dataframe(df, delay=1.0)
 
     # Update topic column
-    df_categorized = df_categorized.with_columns(
-        pl.col("gemini_category").alias("topic")
-    ).drop("gemini_category")
+    df_categorized = df_categorized.with_columns(pl.col("gemini_category").alias("topic")).drop("gemini_category")
 
     # Stats
     print_stats(df_categorized.select(pl.col("topic").alias("gemini_category")))

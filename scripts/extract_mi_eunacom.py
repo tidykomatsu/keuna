@@ -1,4 +1,5 @@
 """Extract questions from MI_EUNACOM HTML files"""
+
 from bs4 import BeautifulSoup
 import html as html_module
 from pathlib import Path
@@ -21,7 +22,9 @@ def extract_from_view_source(filepath: Path) -> str:
 
 
 def parse_answer_options(soup: BeautifulSoup) -> list[dict]:
-    """Extract answer options"""
+    """
+    Extract answer options with BOTH short text and detailed explanations
+    """
     answers = []
     answer_list = soup.find("ul", class_="global-list")
 
@@ -29,6 +32,7 @@ def parse_answer_options(soup: BeautifulSoup) -> list[dict]:
         return answers
 
     for li in answer_list.find_all("li", recursive=False):
+        # Check if correct
         is_correct = False
         span = li.find("span", style=True)
         if span and "#CFFCE4" in span.get("style", ""):
@@ -38,21 +42,45 @@ def parse_answer_options(soup: BeautifulSoup) -> list[dict]:
         if not label:
             continue
 
-        full_text = label.get_text()
-        strong = label.find("strong")
+        full_text = label.get_text(strip=True)
 
-        if strong:
-            option_letter = full_text.split(strong.get_text())[0].strip().split("\n")[0].strip()
-            explanation_text = strong.get_text(strip=True)
+        # Parse the structure: "a. Answer text (correcta/incorrecta): Detailed explanation"
+        import re
+
+        # Extract letter (a., b., c., etc.)
+        letter_match = re.match(r"^([a-e]\.)\s*", full_text)
+        if letter_match:
+            option_letter = letter_match.group(1)
+            text_after_letter = full_text[len(option_letter) :].strip()
         else:
-            option_letter = full_text.strip().split()[0] if full_text.strip() else ""
-            explanation_text = full_text.strip()
+            option_letter = ""
+            text_after_letter = full_text
 
-        answers.append({
-            "letter": option_letter,
-            "text": explanation_text,
-            "is_correct": is_correct
-        })
+        # Split on (correcta)/(incorrecta) markers followed by ":"
+        # This separates short answer from detailed explanation
+        pattern = r"^(.*?)\s*\((correcta|incorrecta)\):\s*(.*)$"
+        match = re.match(pattern, text_after_letter, re.DOTALL)
+
+        if match:
+            short_text = match.group(1).strip()
+            detailed_explanation = match.group(3).strip()
+        else:
+            # Fallback: no clear structure, just split on first ":"
+            parts = text_after_letter.split(":", 1)
+            short_text = parts[0].strip()
+            detailed_explanation = parts[1].strip() if len(parts) > 1 else ""
+
+        # Remove any remaining (correcta)/(incorrecta) from short text
+        short_text = re.sub(r"\s*\((correcta|incorrecta)\)", "", short_text).strip()
+
+        answers.append(
+            {
+                "letter": option_letter if option_letter else short_text[:3],
+                "text": short_text,  # SHORT version for display before answering
+                "explanation": detailed_explanation,  # DETAILED for feedback after answering
+                "is_correct": is_correct,
+            }
+        )
 
     return answers
 
@@ -63,6 +91,7 @@ def extract_question(item_html: str, source_filename: str) -> dict | None:
 
     # Extract question ID
     import re
+
     question_id = None
     button = soup.find("button", {"data-bs-target": re.compile("question_")})
     if button:
@@ -108,7 +137,7 @@ def extract_question(item_html: str, source_filename: str) -> dict | None:
         "correct_answer": correct_answer,
         "explanation": explanation,
         "source_file": source_filename,
-        "source_type": "mi_eunacom"
+        "source_type": "mi_eunacom",
     }
 
 
