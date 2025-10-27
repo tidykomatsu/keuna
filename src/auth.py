@@ -61,10 +61,24 @@ def show_login_page():
 
         if submit:
             if authenticate(username, password):
+                # Show loading message while preloading
+                with st.spinner("⏳ Iniciando aplicación..."):
+                    # Preload questions into session state (ONE TIME)
+                    from src.utils import load_questions
+                    questions_df, questions_dict = load_questions()
+
+                    # Store for instant access throughout session
+                    st.session_state.questions_df = questions_df
+                    st.session_state.questions_dict = questions_dict
+
+                    # Initialize adaptive weights
+                    st.session_state.adaptive_weights = {}
+                    st.session_state.questions_since_update = 0
+
                 st.session_state.authenticated = True
                 st.session_state.username = username
                 st.session_state.name = username.capitalize()
-                st.success(f"¡Bienvenida {st.session_state.name}!")
+                st.success(f"✅ ¡Bienvenida {st.session_state.name}!")
                 st.rerun()
             else:
                 st.error("❌ Usuario o contraseña incorrectos")

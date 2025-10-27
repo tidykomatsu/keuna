@@ -59,6 +59,10 @@ def display_question(question: dict):
 
     # Question card
     with st.container():
+        # SHOW TOPIC
+        if question.get('topic'):
+            st.caption(f"📚 **{question['topic']}**")
+
         st.markdown(f"### 📝 Pregunta #{question.get('question_number', question['question_id'])}")
         st.markdown("---")
         st.markdown(f"**{question['question_text']}**")
@@ -160,14 +164,13 @@ def display_question(question: dict):
 # ============================================================================
 
 def main():
-    """Main practice mode logic"""
+    """Main practice mode logic - OPTIMIZED"""
     st.title("📚 Práctica Aleatoria")
     st.markdown("---")
 
     init_state()
-    questions_df, questions_dict = load_questions()
 
-    # Sidebar stats
+    # Sidebar: MINIMAL stats only
     with st.sidebar:
         st.markdown("### 📊 Tu Progreso")
         stats = get_user_stats(st.session_state.username)
@@ -179,67 +182,16 @@ def main():
             st.metric("Precisión", f"{stats['accuracy']:.1f}%")
 
         st.divider()
-
-        # Topic Mastery Levels
-        st.markdown("### 🏆 Niveles por Tema")
-        mastery_df = get_all_topic_masteries(st.session_state.username)
-
-        if len(mastery_df) > 0:
-            # Show top 3 weakest topics
-            for row in mastery_df.head(3).iter_rows(named=True):
-                stars = row['stars']
-                accuracy = row.get('accuracy', 0)
-                st.caption(f"{stars} **{row['topic']}** ({accuracy:.0f}%)")
-
-            if len(mastery_df) > 3:
-                with st.expander("Ver todos los temas"):
-                    for row in mastery_df.tail(len(mastery_df) - 3).iter_rows(named=True):
-                        stars = row['stars']
-                        accuracy = row.get('accuracy', 0)
-                        st.caption(f"{stars} **{row['topic']}** ({accuracy:.0f}%)")
-        else:
-            st.caption("Comienza a responder para ver tus niveles")
-
-        st.divider()
-
-        st.markdown("### ⚙️ Opciones")
-        mode = st.selectbox(
-            "Modo de selección:",
-            options=["adaptive", "unanswered", "weakest", "random"],
-            format_func=lambda x: {
-                "adaptive": "🧠 Adaptativo (Recomendado)",
-                "unanswered": "📝 Solo no respondidas",
-                "weakest": "⚠️ Solo incorrectas",
-                "random": "🎲 Completamente aleatorio"
-            }[x],
-            index=0,
-            help="Adaptativo: Mezcla inteligente basada en tu rendimiento"
-        )
-
-        st.divider()
         show_logout_button()
 
-    # Get current question using smart selector
+    # Get question using cached adaptive selection (FAST!)
     if st.session_state.current_question is None or st.session_state.refresh_question:
-        # Use smart selection algorithm
-        selected_question = select_next_question(
-            st.session_state.username,
-            mode=mode
-        )
+        from src.question_selector import select_adaptive_cached
+
+        selected_question = select_adaptive_cached(st.session_state.username)
 
         if selected_question is None:
             st.warning("No hay preguntas disponibles")
-
-            # Check if user completed all in unanswered mode
-            if mode == "unanswered":
-                st.success("### 🎉 ¡Felicitaciones!")
-                st.info("Has respondido todas las preguntas disponibles.")
-
-                if st.button("🔄 Reiniciar progreso", type="secondary"):
-                    with st.spinner("Reiniciando..."):
-                        reset_user_progress(st.session_state.username)
-                        st.success("Progreso reiniciado exitosamente")
-                        st.rerun()
             return
 
         st.session_state.current_question = selected_question

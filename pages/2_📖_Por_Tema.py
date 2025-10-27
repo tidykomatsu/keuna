@@ -59,6 +59,10 @@ def display_question(question: dict):
 
     # Question card
     with st.container():
+        # SHOW TOPIC
+        if question.get('topic'):
+            st.caption(f"📚 **{question['topic']}**")
+
         st.markdown(f"### 📝 Pregunta #{question.get('question_number', question['question_id'])}")
         st.markdown("---")
         st.markdown(f"**{question['question_text']}**")
@@ -160,14 +164,22 @@ def display_question(question: dict):
 # ============================================================================
 
 def main():
-    """Topic-based practice"""
+    """Topic-based practice - OPTIMIZED"""
     st.title("📖 Práctica por Tema")
     st.markdown("---")
 
     init_state()
-    questions_df, questions_dict = load_questions()
 
-    # Sidebar stats and topic selector
+    # Get cached questions from session state
+    questions_df = st.session_state.get('questions_df')
+    if questions_df is None:
+        # Fallback: load if not cached
+        from src.utils import load_questions
+        questions_df, questions_dict = load_questions()
+        st.session_state.questions_df = questions_df
+        st.session_state.questions_dict = questions_dict
+
+    # Sidebar: MINIMAL stats and topic selector
     with st.sidebar:
         st.markdown("### 📊 Tu Progreso")
         stats = get_user_stats(st.session_state.username)
@@ -180,28 +192,6 @@ def main():
 
         st.divider()
 
-        # Topic Mastery Levels
-        st.markdown("### 🏆 Niveles por Tema")
-        mastery_df = get_all_topic_masteries(st.session_state.username)
-
-        if len(mastery_df) > 0:
-            # Show top 3 weakest topics
-            for row in mastery_df.head(3).iter_rows(named=True):
-                stars = row['stars']
-                accuracy = row.get('accuracy', 0)
-                st.caption(f"{stars} **{row['topic']}** ({accuracy:.0f}%)")
-
-            if len(mastery_df) > 3:
-                with st.expander("Ver todos los temas"):
-                    for row in mastery_df.tail(len(mastery_df) - 3).iter_rows(named=True):
-                        stars = row['stars']
-                        accuracy = row.get('accuracy', 0)
-                        st.caption(f"{stars} **{row['topic']}** ({accuracy:.0f}%)")
-        else:
-            st.caption("Comienza a responder para ver tus niveles")
-
-        st.divider()
-
         st.markdown("### 📚 Selecciona Tema")
         topics = sorted(questions_df["topic"].unique().to_list())
         selected_topic = st.selectbox(
@@ -209,22 +199,6 @@ def main():
             options=topics,
             key="topic_selector",
             label_visibility="collapsed"
-        )
-
-        st.divider()
-
-        st.markdown("### ⚙️ Opciones")
-        mode = st.selectbox(
-            "Modo de selección:",
-            options=["adaptive", "unanswered", "weakest", "random"],
-            format_func=lambda x: {
-                "adaptive": "🧠 Adaptativo (Recomendado)",
-                "unanswered": "📝 Solo no respondidas",
-                "weakest": "⚠️ Solo incorrectas",
-                "random": "🎲 Completamente aleatorio"
-            }[x],
-            index=0,
-            help="Adaptativo: Mezcla inteligente basada en tu rendimiento en este tema"
         )
 
         st.divider()
@@ -256,13 +230,13 @@ def main():
 
     st.markdown("---")
 
-    # Get current question using smart selector
+    # Get question using cached adaptive selection with topic filter
     if st.session_state.current_question is None or st.session_state.refresh_question:
-        # Use smart selection algorithm with topic filter
-        selected_question = select_next_question(
+        from src.question_selector import select_adaptive_cached
+
+        selected_question = select_adaptive_cached(
             st.session_state.username,
-            topic=selected_topic,
-            mode=mode
+            topic=selected_topic  # Pass the selected topic
         )
 
         if selected_question is None:
