@@ -6,7 +6,7 @@ import os
 import json
 import time
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime
 import polars as pl
 from google import genai
 
@@ -45,7 +45,6 @@ CATEGORIES = [
     "Ginecología",
     "Pediatría",
     "Medicina Legal",
-    "Other",
 ]
 
 API_KEY = os.getenv("GEMINI_API_KEY")
@@ -57,13 +56,12 @@ MODEL = "gemini-2.5-flash-lite"
 PROJECT_ROOT = Path(__file__).parent.parent
 PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
 
-GUEVARA_FILE = PROCESSED_DIR / "guevara_20251026_180614.json"
-MI_EUNACOM_FILE = PROCESSED_DIR / "mi_eunacom_20251026_171423.json"
+GUEVARA_FILE = PROCESSED_DIR / "guevara.json"
+MI_EUNACOM_FILE = PROCESSED_DIR / "mi_eunacom.json"
 CHECKPOINT_FILE = PROCESSED_DIR / "categorization_checkpoint.json"
 OUTPUT_FILE = PROCESSED_DIR / "questions_categorized.json"
 
 CHECKPOINT_INTERVAL = 5  # Save every 5 questions
-
 
 # ============================================================================
 # Load and Merge
@@ -93,19 +91,26 @@ def load_and_merge() -> pl.DataFrame:
 
 
 # ============================================================================
-# Categorization
+# Categorization - IMPROVED VERSION
 # ============================================================================
 
 
 def build_prompt(question_text: str, correct_answer: str, explanation: str) -> str:
-    """Build categorization prompt"""
+    """Build IMPROVED categorization prompt that forces a choice"""
 
-    categories_str = ", ".join(CATEGORIES[:-1])
+    categories_str = "\n".join([f"- {cat}" for cat in CATEGORIES])
 
-    return f"""Categoriza esta pregunta médica en UNA de estas especialidades:
+    return f"""Eres un experto en medicina que debe categorizar preguntas del examen EUNACOM.
+
+CATEGORÍAS DISPONIBLES:
 {categories_str}
 
-Si no encaja claramente, responde "Other".
+INSTRUCCIONES:
+1. DEBES elegir la especialidad MÁS RELACIONADA, incluso si la relación es indirecta
+2. Si hay múltiples especialidades posibles, elige la más específica
+3. NUNCA respondas con categorías que no están en la lista
+4. Responde en formato JSON con esta estructura exacta:
+   {{"category": "Nombre_de_Categoria", "confidence": 0.95}}
 
 PREGUNTA: {question_text}
 
@@ -113,11 +118,16 @@ RESPUESTA CORRECTA: {correct_answer}
 
 EXPLICACIÓN: {explanation}
 
-Responde SOLO con el nombre de la especialidad."""
+Responde SOLO con el JSON. Confidence debe ser un número entre 0.0 y 1.0."""
 
 
-def categorize_question(question_text: str, correct_answer: str, explanation: str) -> str:
-    """Categorize single question with retry logic"""
+def categorize_question(question_text: str, correct_answer: str, explanation: str) -> tuple[str, float]:
+    """
+    Categorize single question with retry logic
+
+    Returns:
+        tuple: (category, confidence)
+    """
 
     prompt = build_prompt(question_text, correct_answer, explanation)
 
@@ -125,16 +135,47 @@ def categorize_question(question_text: str, correct_answer: str, explanation: st
         try:
             response = client.models.generate_content(model=MODEL, contents=prompt)
 
-            category = response.text.strip()
+            response_text = response.text.strip()
 
-            if category in CATEGORIES:
-                return category
+            # Try to parse JSON response
+            try:
+                # Extract JSON from markdown code blocks if present
+                if "```json" in response_text:
+                    response_text = response_text.split("```json")[1].split("```")[0].strip()
+                elif "```" in response_text:
+                    response_text = response_text.split("```")[1].split("```")[0].strip()
 
-            for valid_cat in CATEGORIES:
-                if valid_cat.lower() in category.lower():
-                    return valid_cat
+                result = json.loads(response_text)
+                category = result.get("category", "").strip()
+                confidence = float(result.get("confidence", 0.5))
 
-            return "Other"
+                # Validate category is in our list
+                if category in CATEGORIES:
+                    return category, confidence
+
+                # Try fuzzy matching
+                for valid_cat in CATEGORIES:
+                    if valid_cat.lower() in category.lower():
+                        return valid_cat, confidence * 0.9  # Slightly reduce confidence
+
+                # If we got here, try to extract category from text
+                for valid_cat in CATEGORIES:
+                    if valid_cat.lower() in response_text.lower():
+                        return valid_cat, 0.5
+
+                # Last resort: return most general category with low confidence
+                print(f"    ⚠️ Invalid category '{category}', defaulting to Medicina Legal")
+                return "Medicina Legal", 0.3
+
+            except json.JSONDecodeError:
+                # Fallback: try to find category name in plain text
+                response_lower = response_text.lower()
+                for valid_cat in CATEGORIES:
+                    if valid_cat.lower() in response_lower:
+                        return valid_cat, 0.5
+
+                print(f"    ⚠️ Could not parse JSON, defaulting to Medicina Legal")
+                return "Medicina Legal", 0.3
 
         except Exception as e:
             if "429" in str(e):
@@ -143,9 +184,10 @@ def categorize_question(question_text: str, correct_answer: str, explanation: st
                 time.sleep(wait)
             else:
                 print(f"\n  ❌ Error: {e}")
-                return "Other"
+                if attempt == 2:  # Last attempt
+                    return "Medicina Legal", 0.1
 
-    return "Other"
+    return "Medicina Legal", 0.1
 
 
 # ============================================================================
@@ -168,7 +210,7 @@ def format_time(seconds: float) -> str:
         return f"{hours}h {mins}m"
 
 
-def print_progress(current: int, total: int, category: str, elapsed: float, avg_time: float):
+def print_progress(current: int, total: int, category: str, confidence: float, elapsed: float, avg_time: float):
     """Print detailed progress information"""
 
     pct = (current / total) * 100
@@ -183,7 +225,19 @@ def print_progress(current: int, total: int, category: str, elapsed: float, avg_
     filled = int(bar_length * current / total)
     bar = "█" * filled + "░" * (bar_length - filled)
 
-    print(f"[{current}/{total}] {bar} {pct:5.1f}% | " f"⏱️ {elapsed_str} | ETA {eta_str} | ✅ {category}")
+    # Confidence emoji
+    if confidence >= 0.8:
+        conf_icon = "🟢"
+    elif confidence >= 0.5:
+        conf_icon = "🟡"
+    else:
+        conf_icon = "🔴"
+
+    print(
+        f"[{current}/{total}] {bar} {pct:5.1f}% | "
+        f"⏱️ {elapsed_str} | ETA {eta_str} | "
+        f"{conf_icon} {category} ({confidence:.2f})"
+    )
 
 
 # ============================================================================
@@ -198,7 +252,7 @@ def load_checkpoint() -> dict:
         with open(CHECKPOINT_FILE, "r") as f:
             return json.load(f)
 
-    return {"categorized": {}, "last_index": 0, "start_time": None}
+    return {"categorized": {}, "confidences": {}, "last_index": 0, "start_time": None}
 
 
 def save_checkpoint(checkpoint: dict):
@@ -218,12 +272,13 @@ def categorize_dataframe(df: pl.DataFrame, delay: float = 1.0) -> pl.DataFrame:
         delay: Seconds between API calls
 
     Returns:
-        DataFrame with 'topic' column updated
+        DataFrame with 'topic' and 'topic_confidence' columns
     """
 
     checkpoint = load_checkpoint()
     start_idx = checkpoint["last_index"]
     categorized_dict = checkpoint["categorized"]
+    confidences_dict = checkpoint.get("confidences", {})
 
     total = len(df)
 
@@ -238,7 +293,7 @@ def categorize_dataframe(df: pl.DataFrame, delay: float = 1.0) -> pl.DataFrame:
 
     # Calculate estimated time
     questions_to_process = total - start_idx
-    estimated_seconds = questions_to_process * (delay + 0.5)  # +0.5 for API time
+    estimated_seconds = questions_to_process * (delay + 0.5)
     estimated_time = format_time(estimated_seconds)
 
     print(f"🔍 Categorizing {questions_to_process} questions")
@@ -248,7 +303,7 @@ def categorize_dataframe(df: pl.DataFrame, delay: float = 1.0) -> pl.DataFrame:
 
     # Track average processing time
     processing_times = []
-    avg_time = 1.5  # Default fallback
+    avg_time = 1.5
     questions_processed = 0
 
     for idx, row in enumerate(df.iter_rows(named=True)):
@@ -263,9 +318,10 @@ def categorize_dataframe(df: pl.DataFrame, delay: float = 1.0) -> pl.DataFrame:
         # Start timing this question
         q_start = time.time()
 
-        category = categorize_question(row["question_text"], row["correct_answer"], row["explanation"])
+        category, confidence = categorize_question(row["question_text"], row["correct_answer"], row["explanation"])
 
         categorized_dict[question_id] = category
+        confidences_dict[question_id] = confidence
         questions_processed += 1
 
         # Calculate timing
@@ -276,11 +332,12 @@ def categorize_dataframe(df: pl.DataFrame, delay: float = 1.0) -> pl.DataFrame:
         total_elapsed = (datetime.now() - start_time).total_seconds()
 
         # Print progress
-        print_progress(idx + 1, total, category, total_elapsed, avg_time)
+        print_progress(idx + 1, total, category, confidence, total_elapsed, avg_time)
 
         # Save checkpoint every N questions
         if questions_processed % CHECKPOINT_INTERVAL == 0:
             checkpoint["categorized"] = categorized_dict
+            checkpoint["confidences"] = confidences_dict
             checkpoint["last_index"] = idx + 1
             save_checkpoint(checkpoint)
             print(f"   💾 Checkpoint saved ({idx + 1}/{total})")
@@ -290,6 +347,7 @@ def categorize_dataframe(df: pl.DataFrame, delay: float = 1.0) -> pl.DataFrame:
 
     # Final checkpoint
     checkpoint["categorized"] = categorized_dict
+    checkpoint["confidences"] = confidences_dict
     checkpoint["last_index"] = total
     save_checkpoint(checkpoint)
 
@@ -303,10 +361,12 @@ def categorize_dataframe(df: pl.DataFrame, delay: float = 1.0) -> pl.DataFrame:
 
     print()
 
-    # Create category column
-    categories = [categorized_dict.get(row["question_id"], "Other") for row in df.iter_rows(named=True)]
+    # Create category and confidence columns
+    categories = [categorized_dict.get(row["question_id"], "Medicina Legal") for row in df.iter_rows(named=True)]
 
-    result_df = df.with_columns(pl.Series("gemini_category", categories))
+    confidences = [confidences_dict.get(row["question_id"], 0.5) for row in df.iter_rows(named=True)]
+
+    result_df = df.with_columns([pl.Series("gemini_category", categories), pl.Series("topic_confidence", confidences)])
 
     return result_df
 
@@ -317,21 +377,46 @@ def categorize_dataframe(df: pl.DataFrame, delay: float = 1.0) -> pl.DataFrame:
 
 
 def print_stats(df: pl.DataFrame):
-    """Print categorization statistics"""
+    """Print categorization statistics with confidence analysis"""
 
-    stats = df.group_by("gemini_category").agg(pl.len().alias("count")).sort("count", descending=True)
+    stats = (
+        df.group_by("gemini_category")
+        .agg([pl.len().alias("count"), pl.col("topic_confidence").mean().alias("avg_confidence")])
+        .sort("count", descending=True)
+    )
 
-    print("=" * 60)
+    print("=" * 80)
     print("📊 CATEGORIZATION RESULTS")
-    print("=" * 60)
+    print("=" * 80)
 
     for row in stats.iter_rows(named=True):
         category = row["gemini_category"]
         count = row["count"]
+        avg_conf = row["avg_confidence"]
         pct = (count / len(df)) * 100
-        print(f"{category:25s}: {count:4d} ({pct:5.1f}%)")
 
-    print("=" * 60)
+        # Confidence indicator
+        if avg_conf >= 0.8:
+            conf_icon = "🟢"
+        elif avg_conf >= 0.5:
+            conf_icon = "🟡"
+        else:
+            conf_icon = "🔴"
+
+        print(f"{category:25s}: {count:4d} ({pct:5.1f}%) {conf_icon} {avg_conf:.2f}")
+
+    print("=" * 80)
+
+    # Confidence distribution
+    low_conf = df.filter(pl.col("topic_confidence") < 0.5)
+    med_conf = df.filter((pl.col("topic_confidence") >= 0.5) & (pl.col("topic_confidence") < 0.8))
+    high_conf = df.filter(pl.col("topic_confidence") >= 0.8)
+
+    print("\n🎯 CONFIDENCE DISTRIBUTION:")
+    print(f"   🔴 Low (<0.5):    {len(low_conf):4d} ({len(low_conf)/len(df)*100:5.1f}%)")
+    print(f"   🟡 Medium (≥0.5): {len(med_conf):4d} ({len(med_conf)/len(df)*100:5.1f}%)")
+    print(f"   🟢 High (≥0.8):   {len(high_conf):4d} ({len(high_conf)/len(df)*100:5.1f}%)")
+    print("=" * 80)
 
 
 # ============================================================================
@@ -342,13 +427,13 @@ def print_stats(df: pl.DataFrame):
 def main():
     """Main pipeline"""
 
-    print("\n" + "=" * 60)
+    print("\n" + "=" * 80)
     if TEST_MODE:
         print(f"🧪 TEST MODE - Processing {TEST_ROWS} questions only")
     else:
         print("🚀 FULL RUN - Categorizing all questions")
     print(f"🤖 Model: {MODEL}")
-    print("=" * 60 + "\n")
+    print("=" * 80 + "\n")
 
     # Load and merge
     df = load_and_merge()
@@ -359,13 +444,14 @@ def main():
         print(f"🧪 Testing with {len(df)} questions\n")
 
     # Categorize
+    print("🔄 Starting categorization...\n")
     df_categorized = categorize_dataframe(df, delay=1.0)
 
-    # Update topic column
+    # Update topic column (keep confidence separate)
     df_categorized = df_categorized.with_columns(pl.col("gemini_category").alias("topic")).drop("gemini_category")
 
     # Stats
-    print_stats(df_categorized.select(pl.col("topic").alias("gemini_category")))
+    print_stats(df_categorized.select([pl.col("topic").alias("gemini_category"), pl.col("topic_confidence")]))
 
     # Save
     if TEST_MODE:
@@ -373,26 +459,40 @@ def main():
     else:
         output_file = OUTPUT_FILE
 
+    print(f"\n💾 Saving to: {output_file.relative_to(PROJECT_ROOT)}")
+
     questions_list = df_categorized.to_dicts()
 
     output_file.parent.mkdir(parents=True, exist_ok=True)
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(questions_list, f, ensure_ascii=False, indent=2)
 
-    print(f"\n💾 Saved to: {output_file.relative_to(PROJECT_ROOT)}")
+    print(f"✅ File saved successfully: {output_file}")
+    print(f"   Size: {output_file.stat().st_size / 1024:.1f} KB")
+    print(f"   Questions: {len(questions_list)}")
+
+    # Verify file was written
+    assert output_file.exists(), "Output file does not exist!"
+
+    with open(output_file, "r") as f:
+        verify_data = json.load(f)
+        assert len(verify_data) == len(questions_list), "File verification failed!"
+
+    print(f"✅ File verification passed")
 
     # Clean up checkpoint (only in full mode)
     if not TEST_MODE and CHECKPOINT_FILE.exists():
         CHECKPOINT_FILE.unlink()
         print("🗑️  Checkpoint file removed")
 
-    print("\n" + "=" * 60)
+    print("\n" + "=" * 80)
     if TEST_MODE:
         print("✅ TEST COMPLETE!")
         print("\nSet TEST_MODE = False to run full categorization")
     else:
         print("✅ CATEGORIZATION COMPLETE!")
-    print("=" * 60 + "\n")
+        print(f"\n📋 Next step: Run import_questions.py with {output_file.name}")
+    print("=" * 80 + "\n")
 
 
 if __name__ == "__main__":

@@ -1,4 +1,5 @@
 """Shared utilities for all extractors"""
+
 from pathlib import Path
 import json
 from datetime import datetime
@@ -10,8 +11,8 @@ def save_questions(questions: list[dict], output_name: str) -> Path:
     processed_dir = project_root / "data" / "processed"
     processed_dir.mkdir(parents=True, exist_ok=True)
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_file = processed_dir / f"{output_name}_{timestamp}.json"
+    # timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_file = processed_dir / f"{output_name}.json"
 
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(questions, f, ensure_ascii=False, indent=2)

@@ -1,4 +1,5 @@
 """Extract questions from GUEVARA HTML files"""
+
 from bs4 import BeautifulSoup
 from pathlib import Path
 import re
@@ -6,7 +7,7 @@ from shared_utils import save_questions, print_extraction_summary
 
 
 def extract_question(question_div, source_filename: str) -> dict | None:
-    """Extract single question from GUEVARA HTML"""
+    """Extract single question from GUEVARA HTML - FIXED to match MI_EUNACOM schema"""
     try:
         # Question ID
         question_id = question_div.get("id", "")
@@ -44,29 +45,33 @@ def extract_question(question_div, source_filename: str) -> dict | None:
                     text = text_div.get_text(strip=True)
                     is_correct = "correct" in ans_div.get("class", [])
 
-                    all_options.append({
-                        "letter": letter,
-                        "text": text,
-                        "is_correct": is_correct
-                    })
+                    # FIXED: Add empty explanation to match MI_EUNACOM schema
+                    all_options.append(
+                        {
+                            "letter": letter,
+                            "text": text,
+                            "explanation": "",  # Empty for Guevara (no per-option explanations)
+                            "is_correct": is_correct,
+                        }
+                    )
 
                     if is_correct:
                         correct_answer = f"{letter} {text}"
 
-        # Explanation
+        # General explanation (topic-level)
         feedback_div = question_div.find("div", class_="generalfeedback")
         explanation = feedback_div.get_text(strip=True, separator=" ") if feedback_div else ""
 
         return {
             "question_id": question_id,
             "question_number": q_number,
-            "topic": "",  # Empty - will be filled by Gemini
+            "topic": "",
             "question_text": q_text,
             "answer_options": all_options,
             "correct_answer": correct_answer,
             "explanation": explanation,
             "source_file": source_filename,
-            "source_type": "guevara"
+            "source_type": "guevara",
         }
 
     except Exception as e:

@@ -3,6 +3,7 @@
 from bs4 import BeautifulSoup
 import html as html_module
 from pathlib import Path
+import re
 from shared_utils import save_questions, print_extraction_summary
 
 
@@ -15,15 +16,16 @@ def extract_from_view_source(filepath: Path) -> str:
         soup = BeautifulSoup(content, "html.parser")
         lines = soup.find_all("td", class_="line-content")
         html_parts = [line.get_text() for line in lines]
-        raw_html = "\n".join(html_parts)
-        return html_module.unescape(raw_html)
+        actual_html = "\n".join(html_parts)
+        return html_module.unescape(actual_html)
 
     return content
 
 
 def parse_answer_options(soup: BeautifulSoup) -> list[dict]:
     """
-    Extract answer options with BOTH short text and detailed explanations
+    Extract answer options - FIXED VERSION
+    Handles the broken HTML structure properly
     """
     answers = []
     answer_list = soup.find("ul", class_="global-list")
@@ -32,52 +34,66 @@ def parse_answer_options(soup: BeautifulSoup) -> list[dict]:
         return answers
 
     for li in answer_list.find_all("li", recursive=False):
-        # Check if correct
+        # Check if correct (green background)
         is_correct = False
         span = li.find("span", style=True)
         if span and "#CFFCE4" in span.get("style", ""):
             is_correct = True
 
+        # Get the label containing all text
         label = li.find("span", class_="mdl-radio__label")
         if not label:
             continue
 
         full_text = label.get_text(strip=True)
 
-        # Parse the structure: "a. Answer text (correcta/incorrecta): Detailed explanation"
-        import re
+        # Parse structure: "a) Short answer text (correcta/incorrecta): Detailed explanation"
+        # OR sometimes: "Short text (correcta): Explanation"
 
-        # Extract letter (a., b., c., etc.)
-        letter_match = re.match(r"^([a-e]\.)\s*", full_text)
+        # Try to extract letter (a), b), c), etc.)
+        letter_match = re.match(r"^([a-e])\)\s*", full_text)
         if letter_match:
-            option_letter = letter_match.group(1)
-            text_after_letter = full_text[len(option_letter) :].strip()
+            option_letter = letter_match.group(1) + "."
+            text_after_letter = full_text[len(letter_match.group(0)) :].strip()
         else:
-            option_letter = ""
+            # No letter found, use default
+            option_letter = f"{chr(97 + len(answers))}."  # a., b., c., etc.
             text_after_letter = full_text
 
-        # Split on (correcta)/(incorrecta) markers followed by ":"
+        # Split on (correcta)/(incorrecta) marker followed by ":"
         # This separates short answer from detailed explanation
         pattern = r"^(.*?)\s*\((correcta|incorrecta)\):\s*(.*)$"
-        match = re.match(pattern, text_after_letter, re.DOTALL)
+        match = re.match(pattern, text_after_letter, re.DOTALL | re.IGNORECASE)
 
         if match:
             short_text = match.group(1).strip()
             detailed_explanation = match.group(3).strip()
         else:
-            # Fallback: no clear structure, just split on first ":"
-            parts = text_after_letter.split(":", 1)
-            short_text = parts[0].strip()
-            detailed_explanation = parts[1].strip() if len(parts) > 1 else ""
+            # Fallback: try splitting on first ":"
+            if ":" in text_after_letter:
+                parts = text_after_letter.split(":", 1)
+                short_text = re.sub(r"\s*\((correcta|incorrecta)\)", "", parts[0], flags=re.IGNORECASE).strip()
+                detailed_explanation = parts[1].strip()
+            else:
+                # No explanation found
+                short_text = re.sub(r"\s*\((correcta|incorrecta)\)", "", text_after_letter, flags=re.IGNORECASE).strip()
+                detailed_explanation = ""
 
-        # Remove any remaining (correcta)/(incorrecta) from short text
-        short_text = re.sub(r"\s*\((correcta|incorrecta)\)", "", short_text).strip()
+        # Remove any remaining (correcta)/(incorrecta) markers
+        short_text = re.sub(r"\s*\((correcta|incorrecta)\)", "", short_text, flags=re.IGNORECASE).strip()
+
+        # Remove duplicate text patterns like "Disenteríad) Disentería"
+        # This happens when text is duplicated with different separators
+        duplicate_pattern = r"^(.+?)([a-e]\)|\s+)\s*\1$"
+        duplicate_match = re.match(duplicate_pattern, short_text, re.IGNORECASE)
+        if duplicate_match:
+            short_text = duplicate_match.group(1).strip()
 
         answers.append(
             {
-                "letter": option_letter if option_letter else short_text[:3],
-                "text": short_text,  # SHORT version for display before answering
-                "explanation": detailed_explanation,  # DETAILED for feedback after answering
+                "letter": option_letter,
+                "text": short_text,
+                "explanation": detailed_explanation,
                 "is_correct": is_correct,
             }
         )
@@ -90,8 +106,6 @@ def extract_question(item_html: str, source_filename: str) -> dict | None:
     soup = BeautifulSoup(item_html, "html.parser")
 
     # Extract question ID
-    import re
-
     question_id = None
     button = soup.find("button", {"data-bs-target": re.compile("question_")})
     if button:
@@ -110,7 +124,7 @@ def extract_question(item_html: str, source_filename: str) -> dict | None:
         if bold:
             question_text = bold.get_text(strip=True)
 
-    # Extract explanation
+    # Extract general explanation (topic-level, not option-level)
     explanation = ""
     modal_body = soup.find("div", class_="modal-body")
     if modal_body:
@@ -121,6 +135,9 @@ def extract_question(item_html: str, source_filename: str) -> dict | None:
     # Extract answer options
     answer_options = parse_answer_options(soup)
 
+    if not answer_options:
+        return None
+
     # Find correct answer
     correct_answer = ""
     for opt in answer_options:
@@ -130,8 +147,8 @@ def extract_question(item_html: str, source_filename: str) -> dict | None:
 
     return {
         "question_id": question_id,
-        "question_number": question_id,  # Use ID as number
-        "topic": "",  # Empty - will be filled by Gemini
+        "question_number": question_id,
+        "topic": "",
         "question_text": question_text,
         "answer_options": answer_options,
         "correct_answer": correct_answer,
