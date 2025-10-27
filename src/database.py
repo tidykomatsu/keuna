@@ -359,7 +359,19 @@ def get_user_performance(username: str, limit: int = None) -> pl.DataFrame:
     conn.close()
 
     if not rows:
-        return pl.DataFrame()
+        # Return empty DataFrame with correct schema
+        return pl.DataFrame(
+            schema={
+                "question_id": pl.Utf8,
+                "topic": pl.Utf8,
+                "total_attempts": pl.Int64,
+                "correct_attempts": pl.Int64,
+                "incorrect_attempts": pl.Int64,
+                "last_answered_at": pl.Datetime,
+                "streak": pl.Int64,
+                "priority_score": pl.Float64,
+            }
+        )
 
     return pl.DataFrame(rows)
 

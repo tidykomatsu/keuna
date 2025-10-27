@@ -76,21 +76,78 @@ def calculate_topic_mastery(username: str, topic: str) -> dict:
 
 
 def get_all_topic_masteries(username: str) -> pl.DataFrame:
-    """Get mastery levels for all topics"""
+    """
+    Get mastery levels for all topics - OPTIMIZED VERSION
+    Single database call instead of one per topic
+    """
+    # Get all topics from questions
     questions_df = get_all_questions()
-    topics = questions_df["topic"].unique().to_list()
+    all_topics = questions_df["topic"].unique().to_list()
 
+    # Get aggregated performance data (single DB call!)
+    topic_perf = get_topic_performance(username)
+
+    if len(topic_perf) == 0:
+        # No performance data - return all topics at level 0
+        return pl.DataFrame({
+            'topic': all_topics,
+            'level': [0] * len(all_topics),
+            'stars': ['☆☆☆☆☆'] * len(all_topics),
+            'accuracy': [0.0] * len(all_topics),
+            'questions_answered': [0] * len(all_topics),
+            'status': ['Sin iniciar'] * len(all_topics)
+        }).sort('level')
+
+    # Calculate mastery level for each topic
     masteries = []
-    for topic in topics:
-        mastery = calculate_topic_mastery(username, topic)
+
+    for row in topic_perf.iter_rows(named=True):
+        accuracy = row['accuracy']
+        questions_answered = row['questions_answered']
+
+        # Level calculation
+        if accuracy >= 90 and questions_answered >= 20:
+            level = 5
+            status = 'Maestro'
+        elif accuracy >= 80 and questions_answered >= 15:
+            level = 4
+            status = 'Experto'
+        elif accuracy >= 70 and questions_answered >= 10:
+            level = 3
+            status = 'Avanzado'
+        elif accuracy >= 60 and questions_answered >= 5:
+            level = 2
+            status = 'Intermedio'
+        elif questions_answered >= 3:
+            level = 1
+            status = 'Principiante'
+        else:
+            level = 0
+            status = 'Iniciando'
+
+        stars = '⭐' * level + '☆' * (5 - level)
+
         masteries.append({
-            'topic': topic,
-            'level': mastery['level'],
-            'stars': mastery['stars'],
-            'accuracy': mastery.get('accuracy', 0),
-            'questions_answered': mastery.get('questions_answered', 0),
-            'status': mastery['status']
+            'topic': row['topic'],
+            'level': level,
+            'stars': stars,
+            'accuracy': accuracy,
+            'questions_answered': questions_answered,
+            'status': status
         })
+
+    # Add topics with no performance data
+    topics_with_data = {m['topic'] for m in masteries}
+    for topic in all_topics:
+        if topic not in topics_with_data:
+            masteries.append({
+                'topic': topic,
+                'level': 0,
+                'stars': '☆☆☆☆☆',
+                'accuracy': 0.0,
+                'questions_answered': 0,
+                'status': 'Sin iniciar'
+            })
 
     return pl.DataFrame(masteries).sort('level')
 
