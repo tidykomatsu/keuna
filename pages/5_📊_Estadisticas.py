@@ -29,12 +29,14 @@ require_auth()
 def main():
     """Statistics dashboard"""
     st.title("📊 Estadísticas de Progreso")
+    st.caption("Visualiza tu rendimiento y progreso de estudio")
     st.markdown("---")
 
     questions_df, _ = load_questions()
     stats = get_user_stats(st.session_state.username)
 
-    # Overall metrics
+    # Overall metrics with improved styling
+    st.markdown("### 📈 Resumen General")
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
@@ -53,9 +55,10 @@ def main():
     st.divider()
 
     if stats["total_answered"] > 0:
+        st.markdown("")
         # ==================== MASTERY LEVELS SECTION ====================
-        st.subheader("🏆 Niveles de Dominio por Tema")
-        st.markdown("*Basado en precisión y número de preguntas respondidas*")
+        st.markdown("### 🏆 Niveles de Dominio por Tema")
+        st.caption("Basado en precisión y número de preguntas respondidas")
 
         from src.question_selector import get_all_topic_masteries
 
@@ -101,7 +104,8 @@ def main():
         st.divider()
         # ==================== END MASTERY ====================
 
-        st.subheader("📚 Rendimiento por Tema")
+        st.markdown("### 📚 Rendimiento por Tema")
+        st.caption("Análisis detallado de tu desempeño en cada tema")
 
         topic_stats = get_stats_by_topic(st.session_state.username, questions_df)
 
@@ -146,10 +150,10 @@ def main():
 
             st.pyplot(ggplot.draw(p))
 
-            st.divider()
+            st.markdown("")
 
             # Table view with color coding
-            st.markdown("### 📋 Detalle por Tema")
+            st.markdown("#### 📋 Detalle por Tema")
 
             display_df = topic_stats.select(
                 [
@@ -175,7 +179,7 @@ def main():
                 }
             )
 
-            st.divider()
+            st.markdown("")
 
             # Weakest topics
             weakest = topic_stats.head(3)
@@ -183,14 +187,14 @@ def main():
             col1, col2 = st.columns(2)
 
             with col1:
-                st.markdown("### 🎯 Temas a Reforzar")
+                st.markdown("#### 🎯 Temas a Reforzar")
                 for row in weakest.iter_rows(named=True):
                     st.warning(f"**{row['topic']}**: {row['accuracy']:.1f}% ({row['correct']}/{row['total']})")
 
             with col2:
                 # Strongest topics
                 strongest = topic_stats.tail(3).reverse()
-                st.markdown("### ⭐ Temas Dominados")
+                st.markdown("#### ⭐ Temas Dominados")
                 for row in strongest.iter_rows(named=True):
                     st.success(f"**{row['topic']}**: {row['accuracy']:.1f}% ({row['correct']}/{row['total']})")
 

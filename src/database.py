@@ -289,7 +289,7 @@ def get_stats_by_topic(username: str, questions_df: pl.DataFrame = None) -> pl.D
         JOIN questions q ON ua.question_id = q.question_id
         WHERE ua.username = %s
         GROUP BY q.topic
-        ORDER BY correct::float / COUNT(*) ASC
+        ORDER BY (SUM(CASE WHEN ua.is_correct THEN 1 ELSE 0 END)::float / COUNT(*)) ASC
         """,
         (username,),
     )

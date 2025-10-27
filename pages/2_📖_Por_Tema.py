@@ -57,15 +57,15 @@ def reset_question_state():
 def display_question(question: dict):
     """Display question with answer options - ENHANCED VERSION"""
 
-    # Question card
+    # Question card with improved styling
     with st.container():
         # SHOW TOPIC
         if question.get('topic'):
-            st.caption(f"📚 **{question['topic']}**")
+            st.markdown(f"##### 📚 {question['topic']}")
 
-        st.markdown(f"### 📝 Pregunta #{question.get('question_number', question['question_id'])}")
-        st.markdown("---")
-        st.markdown(f"**{question['question_text']}**")
+        st.markdown("")
+        st.markdown(f"#### Pregunta #{question.get('question_number', question['question_id'])}")
+        st.markdown(question['question_text'])
         st.markdown("")
 
     # Build clean options dict (letter -> short text only)
@@ -120,15 +120,15 @@ def display_question(question: dict):
 
         if st.session_state.selected_answer == correct_opt["letter"]:
             # ✅ CORRECT ANSWER
-            st.success("### ✅ ¡Correcto!")
+            st.success("#### ✅ ¡Correcto!")
 
             # Show why this answer is correct (if explanation exists)
             if correct_opt.get("explanation"):
-                st.info(f"**💡 Por qué es correcta:**\n\n{correct_opt['explanation']}")
+                st.info(f"💡 **Por qué es correcta:**\n\n{correct_opt['explanation']}")
 
         else:
             # ❌ INCORRECT ANSWER
-            st.error("### ❌ Incorrecto")
+            st.error("#### ❌ Incorrecto")
 
             # Show why user's answer is wrong (if explanation exists)
             if selected_opt and selected_opt.get("explanation"):
@@ -166,6 +166,7 @@ def display_question(question: dict):
 def main():
     """Topic-based practice - OPTIMIZED"""
     st.title("📖 Práctica por Tema")
+    st.caption("Enfócate en áreas específicas para mejorar tu preparación")
     st.markdown("---")
 
     init_state()
@@ -213,20 +214,23 @@ def main():
     # Filter by topic
     topic_df = questions_df.filter(pl.col("topic") == selected_topic)
 
-    # Topic info card
-    col1, col2 = st.columns([2, 1])
+    # Topic info card with improved styling
+    col1, col2, col3 = st.columns([3, 1, 1])
     with col1:
-        st.info(f"**📚 Tema:** {selected_topic}")
+        st.markdown(f"**📚 Tema Actual:** {selected_topic}")
     with col2:
-        st.info(f"**📊 Preguntas:** {len(topic_df)}")
+        st.metric("Total", len(topic_df))
 
     # Show progress in this topic
     answered_ids = get_answered_questions(st.session_state.username)
     topic_answered = topic_df.filter(pl.col("question_id").is_in(list(answered_ids)))
 
+    with col3:
+        st.metric("Respondidas", len(topic_answered))
+
     if len(topic_answered) > 0:
         progress_pct = (len(topic_answered) / len(topic_df)) * 100
-        st.progress(progress_pct / 100, text=f"Progreso en este tema: {progress_pct:.0f}% ({len(topic_answered)}/{len(topic_df)})")
+        st.progress(progress_pct / 100, text=f"Progreso: {progress_pct:.0f}%")
 
     st.markdown("---")
 

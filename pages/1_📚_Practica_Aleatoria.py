@@ -57,15 +57,15 @@ def reset_question_state():
 def display_question(question: dict):
     """Display question with answer options - ENHANCED VERSION"""
 
-    # Question card
+    # Question card with improved styling
     with st.container():
         # SHOW TOPIC
         if question.get('topic'):
-            st.caption(f"📚 **{question['topic']}**")
+            st.markdown(f"##### 📚 {question['topic']}")
 
-        st.markdown(f"### 📝 Pregunta #{question.get('question_number', question['question_id'])}")
-        st.markdown("---")
-        st.markdown(f"**{question['question_text']}**")
+        st.markdown("")
+        st.markdown(f"#### Pregunta #{question.get('question_number', question['question_id'])}")
+        st.markdown(question['question_text'])
         st.markdown("")
 
     # Build clean options dict (letter -> short text only)
@@ -120,15 +120,15 @@ def display_question(question: dict):
 
         if st.session_state.selected_answer == correct_opt["letter"]:
             # ✅ CORRECT ANSWER
-            st.success("### ✅ ¡Correcto!")
+            st.success("#### ✅ ¡Correcto!")
 
             # Show why this answer is correct (if explanation exists)
             if correct_opt.get("explanation"):
-                st.info(f"**💡 Por qué es correcta:**\n\n{correct_opt['explanation']}")
+                st.info(f"💡 **Por qué es correcta:**\n\n{correct_opt['explanation']}")
 
         else:
             # ❌ INCORRECT ANSWER
-            st.error("### ❌ Incorrecto")
+            st.error("#### ❌ Incorrecto")
 
             # Show why user's answer is wrong (if explanation exists)
             if selected_opt and selected_opt.get("explanation"):
@@ -166,6 +166,7 @@ def display_question(question: dict):
 def main():
     """Main practice mode logic - OPTIMIZED"""
     st.title("📚 Práctica Aleatoria")
+    st.caption("Practica con preguntas seleccionadas inteligentemente según tu rendimiento")
     st.markdown("---")
 
     init_state()
