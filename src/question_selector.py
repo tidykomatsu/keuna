@@ -13,6 +13,112 @@ from src.database import (
 )
 
 # ============================================================================
+# OPTIMIZED ADAPTIVE SELECTION WITH CACHING
+# ============================================================================
+
+def get_adaptive_weights(username: str, questions_df: pl.DataFrame) -> dict:
+    """
+    Calculate adaptive selection weights for all questions
+    Cached and updated every 20 questions
+
+    Returns:
+        dict: {question_id: weight} where higher weight = higher priority
+    """
+    performance_df = get_user_performance(username)
+
+    if len(performance_df) == 0:
+        # No history: equal weights for all questions
+        return {q_id: 1.0 for q_id in questions_df["question_id"].to_list()}
+
+    # Calculate weights based on priority_score from database
+    weights = {}
+    for q_id in questions_df["question_id"].to_list():
+        perf = performance_df.filter(pl.col("question_id") == q_id)
+
+        if len(perf) == 0:
+            # Never answered: high priority
+            weights[q_id] = 5.0
+        else:
+            priority = perf["priority_score"][0]
+            # High priority (wrong answers) = high weight
+            # Low priority (correct streak) = low weight but never zero
+            weights[q_id] = max(priority, 0.1) if priority > 0 else 0.5
+
+    return weights
+
+
+def select_adaptive_cached(username: str, topic: str = None) -> dict:
+    """
+    Adaptive selection using cached weights
+    Updates weights only every 20 questions for performance
+
+    Args:
+        username: Current user
+        topic: Optional topic filter
+
+    Returns:
+        dict: Selected question
+    """
+    import streamlit as st
+    import random
+
+    # Get cached questions from session state (loaded at login)
+    questions_df = st.session_state.get('questions_df')
+    if questions_df is None:
+        # Fallback: load if not cached (shouldn't happen)
+        questions_df = get_all_questions()
+        st.session_state.questions_df = questions_df
+
+    # Filter by topic if specified
+    if topic:
+        questions_df = questions_df.filter(pl.col("topic") == topic)
+
+    if len(questions_df) == 0:
+        return None
+
+    # Initialize adaptive weights on first use
+    if 'adaptive_weights' not in st.session_state:
+        st.session_state.adaptive_weights = get_adaptive_weights(username, questions_df)
+        st.session_state.questions_since_update = 0
+
+    # Update counter
+    st.session_state.questions_since_update = st.session_state.get('questions_since_update', 0)
+
+    # Recalculate weights every 20 questions (not every question!)
+    if st.session_state.questions_since_update >= 20:
+        st.session_state.adaptive_weights = get_adaptive_weights(username, questions_df)
+        st.session_state.questions_since_update = 0
+
+    # Increment counter for next time
+    st.session_state.questions_since_update += 1
+
+    # Get weights for available questions
+    weights_dict = st.session_state.adaptive_weights
+    available_ids = questions_df["question_id"].to_list()
+    available_weights = [weights_dict.get(q_id, 1.0) for q_id in available_ids]
+
+    # Normalize weights to probabilities
+    total_weight = sum(available_weights)
+    if total_weight == 0:
+        # Fallback to random if all weights are zero
+        return questions_df.sample(1).to_dicts()[0]
+
+    normalized = [w / total_weight for w in available_weights]
+
+    # Weighted random choice
+    selected_id = random.choices(available_ids, weights=normalized, k=1)[0]
+
+    # Get question dict from cache
+    questions_dict = st.session_state.get('questions_dict')
+    if questions_dict is None:
+        # Build dict if not cached
+        questions_dict = {row["question_id"]: dict(row) for row in questions_df.iter_rows(named=True)}
+        st.session_state.questions_dict = questions_dict
+
+    return questions_dict[selected_id]
+
+
+# ============================================================================
 # Topic Mastery Calculation
 # ============================================================================
 

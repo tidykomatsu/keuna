@@ -53,6 +53,54 @@ def main():
     st.divider()
 
     if stats["total_answered"] > 0:
+        # ==================== MASTERY LEVELS SECTION ====================
+        st.subheader("🏆 Niveles de Dominio por Tema")
+        st.markdown("*Basado en precisión y número de preguntas respondidas*")
+
+        from src.question_selector import get_all_topic_masteries
+
+        with st.spinner("Calculando niveles..."):
+            mastery_df = get_all_topic_masteries(st.session_state.username)
+
+        if len(mastery_df) > 0:
+            # Create 4 columns for layout
+            for idx, row in enumerate(mastery_df.iter_rows(named=True)):
+                col1, col2, col3, col4 = st.columns([3, 2, 1, 1])
+
+                with col1:
+                    st.markdown(f"**{row['topic']}**")
+
+                with col2:
+                    st.markdown(f"{row['stars']}")
+
+                with col3:
+                    accuracy = row.get('accuracy', 0)
+                    if accuracy >= 80:
+                        st.success(f"{accuracy:.0f}%")
+                    elif accuracy >= 60:
+                        st.info(f"{accuracy:.0f}%")
+                    else:
+                        st.warning(f"{accuracy:.0f}%")
+
+                with col4:
+                    q_count = row.get('questions_answered', 0)
+                    st.caption(f"{q_count} preguntas")
+
+            # Recommendations
+            st.markdown("")
+            weakest = mastery_df.head(3)
+
+            st.info(
+                "**💡 Recomendación:** Enfócate en " +
+                ", ".join([f"**{row['topic']}**" for row in weakest.iter_rows(named=True)]) +
+                " para mejorar tu preparación."
+            )
+        else:
+            st.info("Comienza a responder preguntas para ver tus niveles de dominio")
+
+        st.divider()
+        # ==================== END MASTERY ====================
+
         st.subheader("📚 Rendimiento por Tema")
 
         topic_stats = get_stats_by_topic(st.session_state.username, questions_df)
