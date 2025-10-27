@@ -55,7 +55,7 @@ def reset_question_state():
 # ============================================================================
 
 def display_question(question: dict):
-    """Display question with answer options"""
+    """Display question with answer options - ENHANCED VERSION"""
 
     # Question card
     with st.container():
@@ -64,6 +64,7 @@ def display_question(question: dict):
         st.markdown(f"**{question['question_text']}**")
         st.markdown("")
 
+    # Build clean options dict (letter -> short text only)
     options = {opt["letter"]: opt["text"] for opt in question["answer_options"]}
 
     selected = st.radio(
@@ -76,7 +77,7 @@ def display_question(question: dict):
 
     st.markdown("")
 
-    col1, col2 = st.columns([1, 1])
+    col1, col2, col3 = st.columns([1, 1, 1])
 
     with col1:
         verify_disabled = st.session_state.answered or selected is None
@@ -100,22 +101,59 @@ def display_question(question: dict):
             st.session_state.refresh_question = True
             st.rerun()
 
-    # Show feedback if answered
+    # ============================================================================
+    # ENHANCED FEEDBACK SECTION - THIS IS THE NEW PART
+    # ============================================================================
     if st.session_state.answered:
         st.markdown("---")
+
+        # Get relevant option objects
         correct_opt = next(opt for opt in question["answer_options"] if opt["is_correct"])
+        selected_opt = next(
+            (opt for opt in question["answer_options"] if opt["letter"] == st.session_state.selected_answer),
+            None
+        )
 
         if st.session_state.selected_answer == correct_opt["letter"]:
+            # ✅ CORRECT ANSWER
             st.success("### ✅ ¡Correcto!")
+
+            # Show why this answer is correct (if explanation exists)
+            if correct_opt.get("explanation"):
+                st.info(f"**💡 Por qué es correcta:**\n\n{correct_opt['explanation']}")
+
         else:
-            st.error(f"### ❌ Incorrecto")
-            st.info(f"**Respuesta correcta:** {correct_opt['letter']} {correct_opt['text']}")
+            # ❌ INCORRECT ANSWER
+            st.error("### ❌ Incorrecto")
 
+            # Show why user's answer is wrong (if explanation exists)
+            if selected_opt and selected_opt.get("explanation"):
+                st.warning(
+                    f"**❌ Tu respuesta ({selected_opt['letter']} {selected_opt['text']}):**\n\n"
+                    f"{selected_opt['explanation']}"
+                )
+
+            st.markdown("")
+
+            # Show the correct answer
+            st.success(f"**✅ Respuesta correcta: {correct_opt['letter']} {correct_opt['text']}**")
+
+            # Show why correct answer is correct
+            if correct_opt.get("explanation"):
+                st.info(f"**💡 Por qué es correcta:**\n\n{correct_opt['explanation']}")
+
+        # General medical topic explanation (in expandable section)
         st.markdown("")
-        st.info(f"**📖 Explicación:**\n\n{question['explanation']}")
 
-        if "source_exam" in question:
+        if question.get('explanation'):
+            with st.expander("📖 Explicación Completa del Tema", expanded=False):
+                st.markdown(question['explanation'])
+
+        # Source citation
+        if question.get("source_exam"):
             st.caption(f"*📚 Fuente: {question['source_exam']}*")
+        elif question.get("source_file"):
+            st.caption(f"*📚 Fuente: {question['source_file']}*")
 
 # ============================================================================
 # Main Page Logic
