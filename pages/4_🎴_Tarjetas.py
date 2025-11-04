@@ -13,6 +13,7 @@ from src.database import (
     get_custom_flashcards
 )
 from src.utils import load_questions
+from src.modern_ui import inject_modern_css, show_flashcard_stats_sidebar
 
 # ============================================================================
 # Page Config
@@ -24,6 +25,7 @@ st.set_page_config(
     layout="centered"
 )
 
+inject_modern_css()
 require_auth()
 
 # ============================================================================
@@ -58,13 +60,13 @@ def show_flashcard(card: dict, is_custom: bool = False):
         .flashcard {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             border-radius: 20px;
-            padding: 40px;
-            min-height: 300px;
+            padding: 60px;
+            min-height: 400px;
             display: flex;
             align-items: center;
             justify-content: center;
             color: white;
-            font-size: 1.2em;
+            font-size: 1.5em;
             box-shadow: 0 10px 30px rgba(0,0,0,0.3);
             margin: 20px 0;
         }
@@ -251,29 +253,9 @@ def main():
     init_flashcard_state()
     questions_df, questions_dict = load_questions()
 
-    # Sidebar stats
+    # Sidebar: Flashcard stats only
     with st.sidebar:
-        st.markdown("### 📊 Tu Progreso")
-        stats = get_user_stats(st.session_state.username)
-
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("Respondidas", stats["total_answered"])
-        with col2:
-            st.metric("Precisión", f"{stats['accuracy']:.1f}%")
-
-        st.divider()
-
-        # Flashcard-specific stats
-        fc_stats = get_flashcard_stats(st.session_state.username)
-        st.markdown("### 🎴 Estadísticas de Tarjetas")
-
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("Revisadas", fc_stats.get("total_reviewed", 0))
-        with col2:
-            st.metric("Dominadas", fc_stats.get("correct_count", 0))
-
+        show_flashcard_stats_sidebar(st.session_state.username)
         st.divider()
         show_logout_button()
 

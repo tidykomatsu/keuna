@@ -49,7 +49,7 @@ def main():
         show_login_page()
         return
 
-    # Show sidebar after authentication
+    # Show sidebar after authentication + Global UI scaling
     st.markdown(
         """
         <style>
@@ -58,6 +58,36 @@ def main():
             }
             section[data-testid="stSidebar"] {
                 display: block;
+            }
+            /* Make UI bigger */
+            .main .block-container {
+                padding-top: 2rem;
+                padding-bottom: 2rem;
+                max-width: 900px;
+            }
+            h1 {
+                font-size: 3rem !important;
+                margin-bottom: 1.5rem !important;
+            }
+            h2, h3 {
+                font-size: 2rem !important;
+                margin-top: 1.5rem !important;
+                margin-bottom: 1rem !important;
+            }
+            [data-testid="stMetricValue"] {
+                font-size: 2rem !important;
+            }
+            [data-testid="stMetricLabel"] {
+                font-size: 1.2rem !important;
+            }
+            .stButton button {
+                font-size: 1.3rem !important;
+                padding: 1rem 1.5rem !important;
+                height: auto !important;
+                min-height: 4rem !important;
+            }
+            p, div, span {
+                font-size: 1.1rem !important;
             }
         </style>
         """,
@@ -91,8 +121,8 @@ def main():
         if st.button("📚 Práctica Aleatoria", use_container_width=True, type="primary"):
             st.switch_page("pages/1_📚_Practica_Aleatoria.py")
 
-        if st.button("🎯 Examen Simulado", use_container_width=True):
-            st.switch_page("pages/3_🎯_Examen_Simulado.py")
+        if st.button("🎴 Tarjetas", use_container_width=True):
+            st.switch_page("pages/4_🎴_Tarjetas.py")
 
         if st.button("✏️ Mis Tarjetas", use_container_width=True):
             st.switch_page("pages/6_✏️_Mis_Tarjetas.py")
@@ -100,9 +130,6 @@ def main():
     with col2:
         if st.button("📖 Por Tema", use_container_width=True, type="primary"):
             st.switch_page("pages/2_📖_Por_Tema.py")
-
-        if st.button("🎴 Tarjetas", use_container_width=True):
-            st.switch_page("pages/4_🎴_Tarjetas.py")
 
         if st.button("📊 Estadísticas", use_container_width=True):
             st.switch_page("pages/5_📊_Estadisticas.py")

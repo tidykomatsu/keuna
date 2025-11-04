@@ -28,6 +28,49 @@ st.set_page_config(
     layout="centered"
 )
 
+# Modern UI styling
+st.markdown(
+    """
+    <style>
+        /* Make UI bigger and more modern */
+        .main .block-container {
+            padding-top: 2rem;
+            padding-bottom: 2rem;
+            max-width: 900px;
+        }
+        h1 {
+            font-size: 3rem !important;
+            margin-bottom: 1.5rem !important;
+        }
+        h2, h3 {
+            font-size: 2rem !important;
+            margin-top: 1.5rem !important;
+            margin-bottom: 1rem !important;
+        }
+        [data-testid="stMetricValue"] {
+            font-size: 2rem !important;
+        }
+        [data-testid="stMetricLabel"] {
+            font-size: 1.2rem !important;
+        }
+        .stButton button {
+            font-size: 1.3rem !important;
+            padding: 1rem 1.5rem !important;
+            height: auto !important;
+            min-height: 3.5rem !important;
+            border-radius: 10px !important;
+        }
+        p, div, span, label {
+            font-size: 1.1rem !important;
+        }
+        .stTextInput input, .stTextArea textarea {
+            font-size: 1.1rem !important;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 require_auth()
 
 # ============================================================================

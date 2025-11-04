@@ -15,6 +15,7 @@ from src.database import (
 )
 from src.utils import load_questions
 from src.question_selector import select_next_question, get_all_topic_masteries
+from src.modern_ui import inject_modern_css, show_exam_stats_sidebar
 
 # ============================================================================
 # Page Config
@@ -26,6 +27,7 @@ st.set_page_config(
     layout="centered"
 )
 
+inject_modern_css()
 require_auth()
 
 # ============================================================================
@@ -59,9 +61,12 @@ def display_question(question: dict):
 
     # Question card
     with st.container():
-        # SHOW TOPIC
+        # SHOW TOPIC - Modern badge style
         if question.get('topic'):
-            st.caption(f"📚 **{question['topic']}**")
+            st.markdown(
+                f'<div class="topic-badge">📚 {question["topic"]}</div>',
+                unsafe_allow_html=True
+            )
 
         st.markdown(f"### 📝 Pregunta #{question.get('question_number', question['question_id'])}")
         st.markdown("---")
@@ -120,31 +125,46 @@ def display_question(question: dict):
 
         if st.session_state.selected_answer == correct_opt["letter"]:
             # ✅ CORRECT ANSWER
-            st.success("### ✅ ¡Correcto!")
+            st.markdown(
+                '<div class="success-card"><h3>✅ ¡Correcto!</h3></div>',
+                unsafe_allow_html=True
+            )
 
             # Show why this answer is correct (if explanation exists)
             if correct_opt.get("explanation"):
-                st.info(f"**💡 Por qué es correcta:**\n\n{correct_opt['explanation']}")
+                st.markdown(
+                    f'<div class="info-card"><strong>💡 Por qué es correcta:</strong><br><br>{correct_opt["explanation"]}</div>',
+                    unsafe_allow_html=True
+                )
 
         else:
             # ❌ INCORRECT ANSWER
-            st.error("### ❌ Incorrecto")
+            st.markdown(
+                '<div class="error-card"><h3>❌ Incorrecto</h3></div>',
+                unsafe_allow_html=True
+            )
 
             # Show why user's answer is wrong (if explanation exists)
             if selected_opt and selected_opt.get("explanation"):
-                st.warning(
-                    f"**❌ Tu respuesta ({selected_opt['letter']} {selected_opt['text']}):**\n\n"
-                    f"{selected_opt['explanation']}"
+                st.markdown(
+                    f'<div class="error-card"><strong>❌ Tu respuesta ({selected_opt["letter"]} {selected_opt["text"]}):</strong><br><br>{selected_opt["explanation"]}</div>',
+                    unsafe_allow_html=True
                 )
 
             st.markdown("")
 
             # Show the correct answer
-            st.success(f"**✅ Respuesta correcta: {correct_opt['letter']} {correct_opt['text']}**")
+            st.markdown(
+                f'<div class="success-card"><strong>✅ Respuesta correcta: {correct_opt["letter"]} {correct_opt["text"]}</strong></div>',
+                unsafe_allow_html=True
+            )
 
             # Show why correct answer is correct
             if correct_opt.get("explanation"):
-                st.info(f"**💡 Por qué es correcta:**\n\n{correct_opt['explanation']}")
+                st.markdown(
+                    f'<div class="info-card"><strong>💡 Por qué es correcta:</strong><br><br>{correct_opt["explanation"]}</div>',
+                    unsafe_allow_html=True
+                )
 
         # General medical topic explanation (in expandable section)
         st.markdown("")
@@ -170,17 +190,9 @@ def main():
 
     init_state()
 
-    # Sidebar: MINIMAL stats only
+    # Sidebar: Exam stats only
     with st.sidebar:
-        st.markdown("### 📊 Tu Progreso")
-        stats = get_user_stats(st.session_state.username)
-
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("Respondidas", stats["total_answered"])
-        with col2:
-            st.metric("Precisión", f"{stats['accuracy']:.1f}%")
-
+        show_exam_stats_sidebar(st.session_state.username)
         st.divider()
         show_logout_button()
 

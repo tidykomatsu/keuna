@@ -8,16 +8,24 @@ import sys
 import os
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
+# ============================================================================
+# TEST MODE - Set to True to import only first 10 questions
+# ============================================================================
+TEST_MODE = False  # ← Set to True for testing
+TEST_LIMIT = 10
+
 # Add parent directory to path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.database import insert_questions_from_json, get_question_count
 
 # ============================================================================
 # Validation
 # ============================================================================
+
 
 def has_correct_answer(question: dict) -> bool:
     """Check if question has at least one correct answer marked"""
@@ -30,8 +38,13 @@ def validate_question_structure(question: dict) -> tuple[bool, str]:
     Returns (is_valid, error_message)
     """
     required_fields = [
-        "question_id", "question_number", "topic",
-        "question_text", "answer_options", "correct_answer", "explanation"
+        "question_id",
+        "question_number",
+        "topic",
+        "question_text",
+        "answer_options",
+        "correct_answer",
+        "explanation",
     ]
 
     for field in required_fields:
@@ -64,13 +77,14 @@ def validate_question_structure(question: dict) -> tuple[bool, str]:
 # Import Questions
 # ============================================================================
 
+
 def import_questions_from_file(filepath: str):
     """Import questions from JSON file"""
 
     print(f"📂 Loading questions from: {filepath}")
 
     try:
-        with open(filepath, 'r', encoding='utf-8') as f:
+        with open(filepath, "r", encoding="utf-8") as f:
             questions = json.load(f)
     except FileNotFoundError:
         print(f"❌ File not found: {filepath}")
@@ -80,6 +94,11 @@ def import_questions_from_file(filepath: str):
         return
 
     print(f"📊 Found {len(questions)} questions")
+
+    # Apply test mode limit
+    if TEST_MODE:
+        questions = questions[:TEST_LIMIT]
+        print(f"🧪 TEST MODE: Limiting to {len(questions)} questions\n")
 
     # Filter and validate questions
     print("🔍 Validating question structure...")
@@ -137,7 +156,7 @@ def import_questions_from_file(filepath: str):
 
 if __name__ == "__main__":
     # Default to TEST file for now
-    default_file = r"C:\Users\vales\DataspellProjects\keuna\data\processed\questions_categorized_TEST.json"
+    default_file = r"C:\Users\vales\DataspellProjects\keuna\data\processed\questions_categorized.json"
     filepath = default_file
 
     if len(sys.argv) > 1:

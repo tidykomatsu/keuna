@@ -14,6 +14,7 @@ from src.database import (
 )
 from src.utils import load_questions
 from src.question_selector import select_next_question, get_all_topic_masteries
+from src.modern_ui import inject_modern_css, show_exam_stats_sidebar
 
 # ============================================================================
 # Page Config
@@ -25,6 +26,7 @@ st.set_page_config(
     layout="centered"
 )
 
+inject_modern_css()
 require_auth()
 
 # ============================================================================
@@ -59,9 +61,12 @@ def display_question(question: dict):
 
     # Question card
     with st.container():
-        # SHOW TOPIC
+        # SHOW TOPIC - Modern badge style
         if question.get('topic'):
-            st.caption(f"📚 **{question['topic']}**")
+            st.markdown(
+                f'<div class="topic-badge">📚 {question["topic"]}</div>',
+                unsafe_allow_html=True
+            )
 
         st.markdown(f"### 📝 Pregunta #{question.get('question_number', question['question_id'])}")
         st.markdown("---")

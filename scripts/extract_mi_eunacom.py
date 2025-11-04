@@ -89,6 +89,15 @@ def parse_answer_options(soup: BeautifulSoup) -> list[dict]:
         if duplicate_match:
             short_text = duplicate_match.group(1).strip()
 
+        # FIXED: Also handle direct duplicates like "TextoTexto" (no separator)
+        # Check if text is exactly duplicated (first half == second half)
+        if len(short_text) % 2 == 0:
+            midpoint = len(short_text) // 2
+            first_half = short_text[:midpoint]
+            second_half = short_text[midpoint:]
+            if first_half == second_half and len(first_half) > 0:
+                short_text = first_half
+
         answers.append(
             {
                 "letter": option_letter,
