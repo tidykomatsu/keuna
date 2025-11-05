@@ -51,50 +51,23 @@ def init_flashcard_state():
 # ============================================================================
 
 def show_flashcard(card: dict, is_custom: bool = False):
-    """Display a single flashcard"""
-
-    # Card container with styling
-    st.markdown(
-        """
-        <style>
-        .flashcard {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 20px;
-            padding: 60px;
-            min-height: 400px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 1.5em;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-            margin: 20px 0;
-        }
-        .flashcard-back {
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-        }
-        .flashcard-custom {
-            background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
-        }
-        .flashcard-custom-back {
-            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
-
-    card_class = "flashcard-custom" if is_custom else "flashcard"
-    back_class = "flashcard-custom-back" if is_custom else "flashcard-back"
+    """Display a single flashcard - MODERN VERSION using native components"""
 
     if not st.session_state.fc_show_answer:
-        # Front of card - Question
+        # Front of card - Question (use native container with icon)
         front_text = card.get("front_text", card.get("question_text", ""))
-        st.markdown(
-            f'<div class="{card_class}"><div style="text-align: center;">{front_text}</div></div>',
-            unsafe_allow_html=True
-        )
 
+        # Different icons for custom vs regular cards
+        icon = "✏️" if is_custom else "📚"
+
+        with st.container(border=True):
+            st.markdown(f"### {icon} Pregunta")
+            st.divider()
+            # Larger text for better readability
+            st.markdown(f"<div style='text-align: center; font-size: 1.3em; padding: 40px 20px;'>{front_text}</div>",
+                       unsafe_allow_html=True)
+
+        st.markdown("")
         if st.button("🔄 Mostrar Respuesta", type="primary", use_container_width=True):
             st.session_state.fc_show_answer = True
             st.rerun()
@@ -102,14 +75,21 @@ def show_flashcard(card: dict, is_custom: bool = False):
     else:
         # Back of card - Answer
         back_text = card.get("back_text", card.get("correct_answer", ""))
-        st.markdown(
-            f'<div class="{back_class}"><div style="text-align: center;">{back_text}</div></div>',
-            unsafe_allow_html=True
-        )
+
+        icon = "✏️" if is_custom else "💡"
+
+        with st.container(border=True):
+            st.markdown(f"### {icon} Respuesta")
+            st.divider()
+            # Larger text for better readability
+            st.markdown(f"<div style='text-align: center; font-size: 1.3em; padding: 40px 20px;'>{back_text}</div>",
+                       unsafe_allow_html=True)
 
         # Show explanation only for question cards
         if not is_custom and "explanation" in card:
-            st.info(f"**📖 Explicación:** {card['explanation']}")
+            st.markdown("")
+            with st.expander("📖 Ver Explicación Completa"):
+                st.markdown(card['explanation'])
 
         st.markdown("### ¿Qué tan bien lo sabías?")
 
@@ -120,16 +100,19 @@ def show_flashcard(card: dict, is_custom: bool = False):
         with col1:
             if st.button("❌ No lo sabía", type="secondary", use_container_width=True):
                 save_flashcard_review(st.session_state.username, str(card_id), "wrong")
+                st.toast("💪 ¡Sigue practicando!", icon="📚")
                 next_card()
 
         with col2:
             if st.button("🤔 Más o menos", type="secondary", use_container_width=True):
                 save_flashcard_review(st.session_state.username, str(card_id), "partial")
+                st.toast("👍 ¡Buen intento!", icon="🤔")
                 next_card()
 
         with col3:
             if st.button("✅ Lo sabía bien", type="primary", use_container_width=True):
                 save_flashcard_review(st.session_state.username, str(card_id), "correct")
+                st.toast("🎉 ¡Excelente!", icon="✅")
                 next_card()
 
 

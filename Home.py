@@ -6,6 +6,7 @@ import streamlit as st
 
 from src.auth import show_login_page, show_logout_button
 from src.database import init_database, get_user_stats
+from src.modern_ui import inject_modern_css, score_dashboard
 
 # ============================================================================
 # Page Config
@@ -49,7 +50,7 @@ def main():
         show_login_page()
         return
 
-    # Show sidebar after authentication + Global UI scaling
+    # Show sidebar after authentication + inject modern CSS
     st.markdown(
         """
         <style>
@@ -59,56 +60,24 @@ def main():
             section[data-testid="stSidebar"] {
                 display: block;
             }
-            /* Make UI bigger */
-            .main .block-container {
-                padding-top: 2rem;
-                padding-bottom: 2rem;
-                max-width: 900px;
-            }
-            h1 {
-                font-size: 3rem !important;
-                margin-bottom: 1.5rem !important;
-            }
-            h2, h3 {
-                font-size: 2rem !important;
-                margin-top: 1.5rem !important;
-                margin-bottom: 1rem !important;
-            }
-            [data-testid="stMetricValue"] {
-                font-size: 2rem !important;
-            }
-            [data-testid="stMetricLabel"] {
-                font-size: 1.2rem !important;
-            }
-            .stButton button {
-                font-size: 1.3rem !important;
-                padding: 1rem 1.5rem !important;
-                height: auto !important;
-                min-height: 4rem !important;
-            }
-            p, div, span {
-                font-size: 1.1rem !important;
-            }
         </style>
         """,
         unsafe_allow_html=True
     )
+    inject_modern_css()
 
     # Authenticated home page
     st.title("🏥 EUNACOM Quiz")
 
     st.markdown(f"### Bienvenida {st.session_state.name} 👋")
 
-    # Quick stats
+    # Quick stats using modern dashboard
     stats = get_user_stats(st.session_state.username)
-
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("📝 Respondidas", stats["total_answered"])
-    with col2:
-        st.metric("✅ Correctas", stats["total_correct"])
-    with col3:
-        st.metric("🎯 Precisión", f"{stats['accuracy']:.1f}%")
+    score_dashboard(
+        correct=stats["total_correct"],
+        incorrect=stats["total_answered"] - stats["total_correct"],
+        total=stats["total_answered"]
+    )
 
     st.divider()
 

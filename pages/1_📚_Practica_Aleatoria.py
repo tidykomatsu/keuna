@@ -15,7 +15,7 @@ from src.database import (
 )
 from src.utils import load_questions
 from src.question_selector import select_next_question, get_all_topic_masteries
-from src.modern_ui import inject_modern_css, show_exam_stats_sidebar
+from src.modern_ui import inject_modern_css, show_exam_stats_sidebar, question_card, answer_feedback
 
 # ============================================================================
 # Page Config
@@ -57,21 +57,14 @@ def reset_question_state():
 # ============================================================================
 
 def display_question(question: dict):
-    """Display question with answer options - ENHANCED VERSION"""
+    """Display question with answer options - MODERN VERSION"""
 
-    # Question card
-    with st.container():
-        # SHOW TOPIC - Modern badge style
-        if question.get('topic'):
-            st.markdown(
-                f'<div class="topic-badge">📚 {question["topic"]}</div>',
-                unsafe_allow_html=True
-            )
-
-        st.markdown(f"### 📝 Pregunta #{question.get('question_number', question['question_id'])}")
-        st.markdown("---")
-        st.markdown(f"**{question['question_text']}**")
-        st.markdown("")
+    # Modern question card using native components
+    question_card(
+        question_text=question['question_text'],
+        question_number=question.get('question_number', question['question_id']),
+        topic=question.get('topic')
+    )
 
     # Build clean options dict (letter -> short text only)
     options = {opt["letter"]: opt["text"] for opt in question["answer_options"]}
@@ -97,6 +90,12 @@ def display_question(question: dict):
             correct_opt = next(opt for opt in question["answer_options"] if opt["is_correct"])
             is_correct = selected == correct_opt["letter"]
 
+            # Toast notification for immediate feedback
+            if is_correct:
+                st.toast("🎉 ¡Correcto! Muy bien.", icon="✅")
+            else:
+                st.toast("❌ Incorrecto. Revisa la explicación.", icon="❌")
+
             save_answer(st.session_state.username, question["question_id"], selected, is_correct)
             st.rerun()
 
@@ -106,12 +105,13 @@ def display_question(question: dict):
                 correct_opt = next(opt for opt in question["answer_options"] if opt["is_correct"])
                 is_correct = selected == correct_opt["letter"]
                 save_answer(st.session_state.username, question["question_id"], selected, is_correct)
+                st.toast("✅ Respuesta guardada", icon="💾")
 
             st.session_state.refresh_question = True
             st.rerun()
 
     # ============================================================================
-    # ENHANCED FEEDBACK SECTION - THIS IS THE NEW PART
+    # MODERN FEEDBACK SECTION - Using native components
     # ============================================================================
     if st.session_state.answered:
         st.markdown("---")
@@ -123,61 +123,18 @@ def display_question(question: dict):
             None
         )
 
-        if st.session_state.selected_answer == correct_opt["letter"]:
-            # ✅ CORRECT ANSWER
-            st.markdown(
-                '<div class="success-card"><h3>✅ ¡Correcto!</h3></div>',
-                unsafe_allow_html=True
-            )
+        is_correct = st.session_state.selected_answer == correct_opt["letter"]
+        source = question.get("source_exam") or question.get("source_file")
 
-            # Show why this answer is correct (if explanation exists)
-            if correct_opt.get("explanation"):
-                st.markdown(
-                    f'<div class="info-card"><strong>💡 Por qué es correcta:</strong><br><br>{correct_opt["explanation"]}</div>',
-                    unsafe_allow_html=True
-                )
-
-        else:
-            # ❌ INCORRECT ANSWER
-            st.markdown(
-                '<div class="error-card"><h3>❌ Incorrecto</h3></div>',
-                unsafe_allow_html=True
-            )
-
-            # Show why user's answer is wrong (if explanation exists)
-            if selected_opt and selected_opt.get("explanation"):
-                st.markdown(
-                    f'<div class="error-card"><strong>❌ Tu respuesta ({selected_opt["letter"]} {selected_opt["text"]}):</strong><br><br>{selected_opt["explanation"]}</div>',
-                    unsafe_allow_html=True
-                )
-
-            st.markdown("")
-
-            # Show the correct answer
-            st.markdown(
-                f'<div class="success-card"><strong>✅ Respuesta correcta: {correct_opt["letter"]} {correct_opt["text"]}</strong></div>',
-                unsafe_allow_html=True
-            )
-
-            # Show why correct answer is correct
-            if correct_opt.get("explanation"):
-                st.markdown(
-                    f'<div class="info-card"><strong>💡 Por qué es correcta:</strong><br><br>{correct_opt["explanation"]}</div>',
-                    unsafe_allow_html=True
-                )
-
-        # General medical topic explanation (in expandable section)
-        st.markdown("")
-
-        if question.get('explanation'):
-            with st.expander("📖 Explicación Completa del Tema", expanded=False):
-                st.markdown(question['explanation'])
-
-        # Source citation
-        if question.get("source_exam"):
-            st.caption(f"*📚 Fuente: {question['source_exam']}*")
-        elif question.get("source_file"):
-            st.caption(f"*📚 Fuente: {question['source_file']}*")
+        # Use modern answer_feedback component
+        answer_feedback(
+            is_correct=is_correct,
+            user_answer=selected_opt,
+            correct_answer=correct_opt if not is_correct else None,
+            explanation=question.get('explanation'),
+            topic_explanation=question.get('explanation'),
+            source=source
+        )
 
 # ============================================================================
 # Main Page Logic
