@@ -57,21 +57,20 @@ def reset_question_state():
 # ============================================================================
 
 def display_question(question: dict):
-    """Display question with answer options - ENHANCED VERSION"""
+    """Display question with answer options - Using native Streamlit components"""
 
-    # Question card
-    with st.container():
-        # SHOW TOPIC - Modern badge style
-        if question.get('topic'):
-            st.markdown(
-                f'<div class="topic-badge">📚 {question["topic"]}</div>',
-                unsafe_allow_html=True
-            )
+    # Question card with border
+    with st.container(border=True):
+        # Topic and question number in columns
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            if question.get('topic'):
+                st.caption(f"📚 {question['topic']}")
+        with col2:
+            st.caption(f"Pregunta #{question.get('question_number', question['question_id'])}")
 
-        st.markdown(f"### 📝 Pregunta #{question.get('question_number', question['question_id'])}")
         st.markdown("---")
         st.markdown(f"**{question['question_text']}**")
-        st.markdown("")
 
     # Build clean options dict (letter -> short text only)
     options = {opt["letter"]: opt["text"] for opt in question["answer_options"]}
@@ -125,46 +124,31 @@ def display_question(question: dict):
 
         if st.session_state.selected_answer == correct_opt["letter"]:
             # ✅ CORRECT ANSWER
-            st.markdown(
-                '<div class="success-card"><h3>✅ ¡Correcto!</h3></div>',
-                unsafe_allow_html=True
-            )
+            st.success("### ✅ ¡Correcto!")
+            st.toast("¡Respuesta correcta! 🎉", icon="✅")
 
             # Show why this answer is correct (if explanation exists)
             if correct_opt.get("explanation"):
-                st.markdown(
-                    f'<div class="info-card"><strong>💡 Por qué es correcta:</strong><br><br>{correct_opt["explanation"]}</div>',
-                    unsafe_allow_html=True
-                )
+                st.info(f"**💡 Por qué es correcta:**\n\n{correct_opt['explanation']}")
 
         else:
             # ❌ INCORRECT ANSWER
-            st.markdown(
-                '<div class="error-card"><h3>❌ Incorrecto</h3></div>',
-                unsafe_allow_html=True
-            )
+            st.error("### ❌ Incorrecto")
+            st.toast("Respuesta incorrecta. Revisa la explicación.", icon="❌")
 
             # Show why user's answer is wrong (if explanation exists)
             if selected_opt and selected_opt.get("explanation"):
-                st.markdown(
-                    f'<div class="error-card"><strong>❌ Tu respuesta ({selected_opt["letter"]} {selected_opt["text"]}):</strong><br><br>{selected_opt["explanation"]}</div>',
-                    unsafe_allow_html=True
+                st.warning(
+                    f"**❌ Tu respuesta ({selected_opt['letter']} {selected_opt['text']}):**\n\n"
+                    f"{selected_opt['explanation']}"
                 )
 
-            st.markdown("")
-
             # Show the correct answer
-            st.markdown(
-                f'<div class="success-card"><strong>✅ Respuesta correcta: {correct_opt["letter"]} {correct_opt["text"]}</strong></div>',
-                unsafe_allow_html=True
-            )
+            st.success(f"**✅ Respuesta correcta: {correct_opt['letter']} {correct_opt['text']}**")
 
             # Show why correct answer is correct
             if correct_opt.get("explanation"):
-                st.markdown(
-                    f'<div class="info-card"><strong>💡 Por qué es correcta:</strong><br><br>{correct_opt["explanation"]}</div>',
-                    unsafe_allow_html=True
-                )
+                st.info(f"**💡 Por qué es correcta:**\n\n{correct_opt['explanation']}")
 
         # General medical topic explanation (in expandable section)
         st.markdown("")
