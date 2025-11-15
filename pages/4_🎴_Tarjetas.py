@@ -53,22 +53,24 @@ def init_flashcard_state():
 def show_flashcard(card: dict, is_custom: bool = False):
     """Display a single flashcard"""
 
-    # Card container with styling
+    # Card container with styling - Larger for better readability
     st.markdown(
         """
         <style>
         .flashcard {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 20px;
-            padding: 60px;
-            min-height: 400px;
+            border-radius: 24px;
+            padding: 80px 60px;
+            min-height: 450px;
             display: flex;
             align-items: center;
             justify-content: center;
             color: white;
-            font-size: 1.5em;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-            margin: 20px 0;
+            font-size: 2em;
+            font-weight: 500;
+            box-shadow: 0 12px 36px rgba(0,0,0,0.3);
+            margin: 24px 0;
+            line-height: 1.5;
         }
         .flashcard-back {
             background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);

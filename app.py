@@ -6,6 +6,7 @@ import streamlit as st
 
 from src.auth import show_login_page, show_logout_button
 from src.database import init_database, get_user_stats
+from src.modern_ui import inject_modern_css
 
 # ============================================================================
 # Page Config
@@ -49,7 +50,7 @@ def main():
         show_login_page()
         return
 
-    # Show sidebar after authentication + Minimal UI scaling
+    # Show sidebar after authentication + inject modern CSS
     st.markdown(
         """
         <style>
@@ -59,23 +60,11 @@ def main():
             section[data-testid="stSidebar"] {
                 display: block;
             }
-            /* Minimal CSS - Let Streamlit theme handle the rest */
-            .main .block-container {
-                max-width: 950px;
-                padding: 2rem 1.5rem;
-            }
-            .stButton button {
-                font-size: 1.2rem !important;
-                padding: 0.75rem 1.5rem !important;
-                min-height: 3rem !important;
-            }
-            p, div, span {
-                font-size: 1.1rem !important;
-            }
         </style>
         """,
         unsafe_allow_html=True
     )
+    inject_modern_css()
 
     # Authenticated home page
     st.title("🏥 EUNACOM Quiz")
@@ -129,11 +118,9 @@ def main():
     with st.sidebar:
         st.markdown("### 📊 Tu Progreso")
 
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("Total", stats["total_answered"])
-        with col2:
-            st.metric("Precisión", f"{stats['accuracy']:.1f}%")
+        # Use single column to prevent truncation
+        st.metric("📝 Total", stats["total_answered"])
+        st.metric("🎯 Precisión", f"{stats['accuracy']:.1f}%")
 
         st.divider()
         show_logout_button()

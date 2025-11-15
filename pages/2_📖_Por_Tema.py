@@ -190,11 +190,9 @@ def main():
         st.markdown("### 📊 Tu Progreso")
         stats = get_user_stats(st.session_state.username)
 
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("Respondidas", stats["total_answered"])
-        with col2:
-            st.metric("Precisión", f"{stats['accuracy']:.1f}%")
+        # Use single column to prevent truncation
+        st.metric("📝 Respondidas", stats["total_answered"])
+        st.metric("🎯 Precisión", f"{stats['accuracy']:.1f}%")
 
         st.divider()
 
