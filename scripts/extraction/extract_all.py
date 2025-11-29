@@ -3,6 +3,7 @@ from pathlib import Path
 import json
 from datetime import datetime
 from extract_mi_eunacom import extract_all_mi_eunacom
+from extract_mi_eunacom_topics import extract_all_mi_eunacom_topics
 from extract_guevara import extract_all_guevara
 from utils import save_questions, print_extraction_summary
 from config import get_raw_data_root, get_processed_data_root
@@ -42,6 +43,7 @@ def main():
 
     # Extract from all sources
     mi_eunacom_questions = extract_all_mi_eunacom()
+    mi_eunacom_topics_questions = extract_all_mi_eunacom_topics()
     guevara_questions = extract_all_guevara()
 
     # Merge
@@ -51,6 +53,7 @@ def main():
 
     all_questions = merge_and_deduplicate([
         mi_eunacom_questions,
+        mi_eunacom_topics_questions,
         guevara_questions
     ])
 
