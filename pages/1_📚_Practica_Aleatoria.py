@@ -1,5 +1,5 @@
 """
-Random Practice Mode - With Smart Question Selection
+Random Practice Mode - With Smart Question Selection and IMAGE SUPPORT
 """
 
 import streamlit as st
@@ -52,12 +52,33 @@ def reset_question_state():
     st.session_state.answered = False
     st.session_state.selected_answer = None
 
+
+# ============================================================================
+# Image Display Helper
+# ============================================================================
+
+def display_question_images(question: dict):
+    """Display images associated with a question"""
+    images = question.get("images", [])
+    
+    if not images:
+        return
+    
+    # Display each image
+    for idx, img_url in enumerate(images):
+        if img_url:
+            try:
+                st.image(img_url, use_container_width=True)
+            except Exception as e:
+                st.warning(f"⚠️ No se pudo cargar la imagen {idx + 1}")
+
+
 # ============================================================================
 # Question Display
 # ============================================================================
 
 def display_question(question: dict):
-    """Display question with answer options - Using native Streamlit components"""
+    """Display question with answer options and images"""
 
     # Question card with border
     with st.container(border=True):
@@ -71,6 +92,9 @@ def display_question(question: dict):
 
         st.markdown("---")
         st.markdown(f"**{question['question_text']}**")
+        
+        # Display images if present
+        display_question_images(question)
 
     # Build clean options dict (letter -> short text only)
     options = {opt["letter"]: opt["text"] for opt in question["answer_options"]}
@@ -110,12 +134,11 @@ def display_question(question: dict):
             st.rerun()
 
     # ============================================================================
-    # ENHANCED FEEDBACK SECTION - THIS IS THE NEW PART
+    # FEEDBACK SECTION
     # ============================================================================
     if st.session_state.answered:
         st.markdown("---")
 
-        # Get relevant option objects
         correct_opt = next(opt for opt in question["answer_options"] if opt["is_correct"])
         selected_opt = next(
             (opt for opt in question["answer_options"] if opt["letter"] == st.session_state.selected_answer),
@@ -123,64 +146,55 @@ def display_question(question: dict):
         )
 
         if st.session_state.selected_answer == correct_opt["letter"]:
-            # ✅ CORRECT ANSWER
             st.success("### ✅ ¡Correcto!")
             st.toast("¡Respuesta correcta! 🎉", icon="✅")
 
-            # Show why this answer is correct (if explanation exists)
             if correct_opt.get("explanation"):
                 st.info(f"**💡 Por qué es correcta:**\n\n{correct_opt['explanation']}")
 
         else:
-            # ❌ INCORRECT ANSWER
             st.error("### ❌ Incorrecto")
             st.toast("Respuesta incorrecta. Revisa la explicación.", icon="❌")
 
-            # Show why user's answer is wrong (if explanation exists)
             if selected_opt and selected_opt.get("explanation"):
                 st.warning(
                     f"**❌ Tu respuesta ({selected_opt['letter']} {selected_opt['text']}):**\n\n"
                     f"{selected_opt['explanation']}"
                 )
 
-            # Show the correct answer
             st.success(f"**✅ Respuesta correcta: {correct_opt['letter']} {correct_opt['text']}**")
 
-            # Show why correct answer is correct
             if correct_opt.get("explanation"):
                 st.info(f"**💡 Por qué es correcta:**\n\n{correct_opt['explanation']}")
 
-        # General medical topic explanation (in expandable section)
         st.markdown("")
 
         if question.get('explanation'):
             with st.expander("📖 Explicación Completa del Tema", expanded=False):
                 st.markdown(question['explanation'])
 
-        # Source citation
         if question.get("source_exam"):
             st.caption(f"*📚 Fuente: {question['source_exam']}*")
         elif question.get("source_file"):
             st.caption(f"*📚 Fuente: {question['source_file']}*")
+
 
 # ============================================================================
 # Main Page Logic
 # ============================================================================
 
 def main():
-    """Main practice mode logic - OPTIMIZED"""
+    """Main practice mode logic"""
     st.title("📚 Práctica Aleatoria")
     st.markdown("---")
 
     init_state()
 
-    # Sidebar: Exam stats only
     with st.sidebar:
         show_exam_stats_sidebar(st.session_state.username)
         st.divider()
         show_logout_button()
 
-    # Get question using cached adaptive selection (FAST!)
     if st.session_state.current_question is None or st.session_state.refresh_question:
         from src.question_selector import select_adaptive_cached
 

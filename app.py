@@ -1,5 +1,5 @@
 """
-EUNACOM Quiz Application - Home Page
+EUNACOM Quiz Application - Home Page (SIMPLIFIED)
 """
 
 import streamlit as st
@@ -84,9 +84,9 @@ def main():
 
     st.divider()
 
-    # Navigation - Grouped by mode type
-    # Exam Practice Modes
-    st.markdown("### 📝 Práctica de Examen")
+    # Navigation - Core Practice Modes Only
+    st.markdown("### 📝 Modos de Práctica")
+    
     col1, col2 = st.columns(2)
     with col1:
         if st.button("📚 Práctica Aleatoria", use_container_width=True, type="primary"):
@@ -97,28 +97,15 @@ def main():
 
     st.divider()
 
-    # Flashcard Modes
-    st.markdown("### 🎴 Tarjetas de Estudio")
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("🎴 Estudiar Tarjetas", use_container_width=True):
-            st.switch_page("pages/4_🎴_Tarjetas.py")
-    with col2:
-        if st.button("✏️ Mis Tarjetas", use_container_width=True):
-            st.switch_page("pages/6_✏️_Mis_Tarjetas.py")
-
-    st.divider()
-
-    # Other
+    # Stats
     st.markdown("### 📊 Análisis")
-    if st.button("📊 Estadísticas", use_container_width=True):
+    if st.button("📊 Ver Estadísticas", use_container_width=True):
         st.switch_page("pages/5_📊_Estadisticas.py")
 
     # Sidebar with stats and logout
     with st.sidebar:
         st.markdown("### 📊 Tu Progreso")
 
-        # Use single column to prevent truncation
         st.metric("📝 Total", stats["total_answered"])
         st.metric("🎯 Precisión", f"{stats['accuracy']:.1f}%")
 

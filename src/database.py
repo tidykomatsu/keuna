@@ -1,6 +1,7 @@
 """
 Database operations for EUNACOM Quiz App - PostgreSQL/Supabase Version
 All data persistence with automatic performance tracking
+WITH IMAGE SUPPORT
 """
 
 import psycopg2
@@ -49,6 +50,8 @@ def init_database():
 # ============================================================================
 # QUESTION MANAGEMENT
 # ============================================================================
+
+
 def insert_questions_from_json(questions: list[dict]) -> tuple[int, int]:
     """
     Insert questions from JSON structure into database
@@ -62,14 +65,17 @@ def insert_questions_from_json(questions: list[dict]) -> tuple[int, int]:
 
     for question in questions:
         try:
+            # Handle images field (new)
+            images = question.get("images", [])
+            
             cursor.execute(
                 """
                 INSERT INTO questions (
                     question_id, question_number, topic, question_text,
                     answer_options, correct_answer, explanation,
-                    source_file, source_type
+                    source_file, source_type, images
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (question_id) DO UPDATE SET
                     question_number = EXCLUDED.question_number,
                     topic = EXCLUDED.topic,
@@ -79,6 +85,7 @@ def insert_questions_from_json(questions: list[dict]) -> tuple[int, int]:
                     explanation = EXCLUDED.explanation,
                     source_file = EXCLUDED.source_file,
                     source_type = EXCLUDED.source_type,
+                    images = EXCLUDED.images,
                     updated_at = CURRENT_TIMESTAMP
                 """,
                 (
@@ -91,12 +98,12 @@ def insert_questions_from_json(questions: list[dict]) -> tuple[int, int]:
                     question["explanation"],
                     question.get("source_file"),
                     question.get("source_type"),
+                    Json(images),
                 ),
             )
             success_count += 1
         except Exception as e:
             error_count += 1
-            # FIX: Use print instead of st.warning for script compatibility
             print(f"❌ Error inserting question {question['question_id']}: {e}")
             conn.rollback()
             cursor = conn.cursor()
@@ -127,7 +134,8 @@ def get_all_questions() -> pl.DataFrame:
             correct_answer,
             explanation,
             source_file,
-            source_type
+            source_type,
+            images
         FROM questions
         ORDER BY question_number
     """
@@ -153,6 +161,7 @@ def get_all_questions() -> pl.DataFrame:
                 "explanation": pl.Utf8,
                 "source_file": pl.Utf8,
                 "source_type": pl.Utf8,
+                "images": pl.List(pl.Utf8),
             }
         )
 
@@ -200,6 +209,20 @@ def get_question_count() -> int:
     cursor = conn.cursor()
 
     cursor.execute("SELECT COUNT(*) FROM questions")
+    count = cursor.fetchone()[0]
+
+    cursor.close()
+    conn.close()
+
+    return count
+
+
+def get_questions_with_images_count() -> int:
+    """Get count of questions that have images"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT COUNT(*) FROM questions WHERE images != '[]'::jsonb")
     count = cursor.fetchone()[0]
 
     cursor.close()
@@ -359,7 +382,6 @@ def get_user_performance(username: str, limit: int = None) -> pl.DataFrame:
     conn.close()
 
     if not rows:
-        # Return empty DataFrame with correct schema
         return pl.DataFrame(
             schema={
                 "question_id": pl.Utf8,
@@ -411,7 +433,7 @@ def get_topic_performance(username: str) -> pl.DataFrame:
 
 
 # ============================================================================
-# FLASHCARD OPERATIONS
+# FLASHCARD OPERATIONS (Kept for backwards compatibility)
 # ============================================================================
 
 
@@ -457,7 +479,7 @@ def get_flashcard_stats(username: str) -> dict:
 
 
 # ============================================================================
-# CUSTOM FLASHCARDS
+# CUSTOM FLASHCARDS (Kept for backwards compatibility)
 # ============================================================================
 
 
@@ -598,13 +620,6 @@ def get_topic_mastery_levels(username: str) -> pl.DataFrame:
     """
     Get mastery levels for all topics
     Calculated from user_question_performance
-
-    Returns DataFrame with:
-        - topic
-        - level (0-5)
-        - accuracy
-        - questions_answered
-        - avg_priority
     """
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -618,7 +633,6 @@ def get_topic_mastery_levels(username: str) -> pl.DataFrame:
                 THEN (correct_attempts::float / total_attempts * 100)
                 ELSE 0 END) as accuracy,
             AVG(priority_score) as avg_priority,
-            -- Calculate level (0-5)
             CASE
                 WHEN AVG(CASE WHEN total_attempts > 0
                     THEN (correct_attempts::float / total_attempts * 100)
@@ -661,7 +675,6 @@ def get_weakest_topic(username: str) -> str:
     mastery_df = get_topic_mastery_levels(username)
 
     if len(mastery_df) == 0:
-        # No data: return random topic
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT DISTINCT topic FROM questions LIMIT 1")
@@ -670,6 +683,5 @@ def get_weakest_topic(username: str) -> str:
         conn.close()
         return result[0] if result else None
 
-    # Return topic with lowest level
     weakest = mastery_df.head(1)
     return weakest["topic"][0]

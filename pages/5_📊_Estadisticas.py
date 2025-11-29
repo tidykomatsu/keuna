@@ -1,14 +1,14 @@
 """
-Statistics Dashboard - Polished
+Statistics Dashboard - Simplified
 """
 
 import streamlit as st
 import polars as pl
-from plotnine import *
 
-from src.auth import require_auth
+from src.auth import require_auth, show_logout_button
 from src.database import get_user_stats, get_stats_by_topic, reset_user_progress
 from src.utils import load_questions
+from src.modern_ui import inject_modern_css
 
 # ============================================================================
 # Page Config
@@ -20,45 +20,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Modern UI styling
-st.markdown(
-    """
-    <style>
-        /* Make UI bigger and more modern */
-        .main .block-container {
-            padding-top: 2rem;
-            padding-bottom: 2rem;
-        }
-        h1 {
-            font-size: 3rem !important;
-            margin-bottom: 1.5rem !important;
-        }
-        h2, h3 {
-            font-size: 2rem !important;
-            margin-top: 1.5rem !important;
-            margin-bottom: 1rem !important;
-        }
-        [data-testid="stMetricValue"] {
-            font-size: 2rem !important;
-        }
-        [data-testid="stMetricLabel"] {
-            font-size: 1.2rem !important;
-        }
-        .stButton button {
-            font-size: 1.3rem !important;
-            padding: 1rem 1.5rem !important;
-            height: auto !important;
-            min-height: 3.5rem !important;
-            border-radius: 10px !important;
-        }
-        p, div, span, label {
-            font-size: 1.1rem !important;
-        }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
+inject_modern_css()
 require_auth()
 
 # ============================================================================
@@ -92,7 +54,7 @@ def main():
     st.divider()
 
     if stats["total_answered"] > 0:
-        # ==================== MASTERY LEVELS SECTION ====================
+        # Mastery levels
         st.subheader("🏆 Niveles de Dominio por Tema")
         st.markdown("*Basado en precisión y número de preguntas respondidas*")
 
@@ -102,7 +64,6 @@ def main():
             mastery_df = get_all_topic_masteries(st.session_state.username)
 
         if len(mastery_df) > 0:
-            # Create 4 columns for layout
             for idx, row in enumerate(mastery_df.iter_rows(named=True)):
                 col1, col2, col3, col4 = st.columns([3, 2, 1, 1])
 
@@ -125,7 +86,6 @@ def main():
                     q_count = row.get('questions_answered', 0)
                     st.caption(f"{q_count} preguntas")
 
-            # Recommendations
             st.markdown("")
             weakest = mastery_df.head(3)
 
@@ -138,58 +98,12 @@ def main():
             st.info("Comienza a responder preguntas para ver tus niveles de dominio")
 
         st.divider()
-        # ==================== END MASTERY ====================
 
         st.subheader("📚 Rendimiento por Tema")
 
         topic_stats = get_stats_by_topic(st.session_state.username, questions_df)
 
         if len(topic_stats) > 0:
-            # Prepare data for visualization
-            viz_data = topic_stats.with_columns([
-                pl.col("correct").alias("Correctas"),
-                (pl.col("total") - pl.col("correct")).alias("Incorrectas")
-            ]).select(["topic", "Correctas", "Incorrectas"])
-
-            # Transform to long format for plotnine
-            plot_data = pl.concat([
-                viz_data.select(["topic", "Correctas"]).rename({"Correctas": "count"}).with_columns(
-                    pl.lit("Correctas").alias("type")),
-                viz_data.select(["topic", "Incorrectas"]).rename({"Incorrectas": "count"}).with_columns(
-                    pl.lit("Incorrectas").alias("type"))
-            ])
-
-            plot_df = plot_data.to_pandas()
-
-            # Create chart
-            p = (
-                    ggplot(plot_df, aes(x='topic', y='count', fill='type'))
-                    + geom_bar(stat='identity', position='dodge', width=0.7)
-                    + scale_fill_manual(values={'Correctas': '#2ecc71', 'Incorrectas': '#e74c3c'})
-                    + labs(
-                title='Respuestas Correctas vs Incorrectas por Tema',
-                x='Tema',
-                y='Cantidad de Respuestas',
-                fill='Tipo'
-            )
-                    + theme_classic()
-                    + theme(
-                figure_size=(14, 6),
-                axis_text_x=element_text(angle=45, hjust=1, size=10),
-                plot_title=element_text(size=16, weight='bold'),
-                legend_position='top',
-                legend_title=element_text(size=12),
-                legend_text=element_text(size=10)
-            )
-            )
-
-            st.pyplot(ggplot.draw(p))
-
-            st.divider()
-
-            # Table view with color coding
-            st.markdown("### 📋 Detalle por Tema")
-
             display_df = topic_stats.select(
                 [
                     pl.col("topic").alias("Tema"),
@@ -214,25 +128,6 @@ def main():
                 }
             )
 
-            st.divider()
-
-            # Weakest topics
-            weakest = topic_stats.head(3)
-
-            col1, col2 = st.columns(2)
-
-            with col1:
-                st.markdown("### 🎯 Temas a Reforzar")
-                for row in weakest.iter_rows(named=True):
-                    st.warning(f"**{row['topic']}**: {row['accuracy']:.1f}% ({row['correct']}/{row['total']})")
-
-            with col2:
-                # Strongest topics
-                strongest = topic_stats.tail(3).reverse()
-                st.markdown("### ⭐ Temas Dominados")
-                for row in strongest.iter_rows(named=True):
-                    st.success(f"**{row['topic']}**: {row['accuracy']:.1f}% ({row['correct']}/{row['total']})")
-
     else:
         st.info("""
         ### 📚 Aún no has respondido ninguna pregunta
@@ -242,7 +137,6 @@ def main():
         **Sugerencias:**
         - Prueba el modo de **Práctica Aleatoria** para familiarizarte
         - Enfócate en un tema usando **Por Tema**
-        - Simula el examen real con **Examen Simulado**
         """)
 
     # Reset progress section
@@ -255,8 +149,6 @@ def main():
         - Todas tus respuestas
         - Todas tus estadísticas
         - Todo tu historial de progreso
-
-        **NO** eliminará tus tarjetas personalizadas.
         """)
 
         confirm_text = st.text_input(
@@ -271,6 +163,10 @@ def main():
                 st.rerun()
             else:
                 st.error("❌ Debes escribir 'REINICIAR' para confirmar")
+
+    # Sidebar
+    with st.sidebar:
+        show_logout_button()
 
 
 if __name__ == "__main__":

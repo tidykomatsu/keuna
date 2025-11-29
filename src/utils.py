@@ -10,7 +10,7 @@ from src.database import get_all_questions
 # Question Loading
 # ============================================================================
 
-@st.cache_data(ttl=600)  # Cache for 10 minutes
+@st.cache_data(ttl=600)
 def load_questions() -> tuple[pl.DataFrame, dict]:
     """
     Load questions from database
@@ -23,7 +23,6 @@ def load_questions() -> tuple[pl.DataFrame, dict]:
         st.info("Por favor, importa preguntas usando el script de carga")
         st.stop()
 
-    # Create dict for O(1) lookup
     questions_dict = {
         row["question_id"]: dict(row)
         for row in questions_df.iter_rows(named=True)

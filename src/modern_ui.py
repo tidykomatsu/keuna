@@ -12,15 +12,11 @@ from src.database import get_user_stats, get_flashcard_stats
 
 MINIMAL_CSS = """
 <style>
-    /* Enhanced CSS - Bigger, more readable UI while maintaining harmony */
-
-    /* Base text sizing - 30% larger for better readability */
     .main p, .main div, .main label, .main span {
         font-size: 1.3rem !important;
         line-height: 1.7 !important;
     }
 
-    /* Typography hierarchy - clear visual distinction */
     h1 {
         font-size: 3rem !important;
         margin-bottom: 1rem !important;
@@ -36,7 +32,6 @@ MINIMAL_CSS = """
         margin-bottom: 0.6rem !important;
     }
 
-    /* Larger buttons with better spacing */
     .stButton button {
         font-size: 1.5rem !important;
         padding: 1rem 2rem !important;
@@ -45,14 +40,12 @@ MINIMAL_CSS = """
         font-weight: 500 !important;
     }
 
-    /* Button hover effect */
     .stButton button:hover {
         transform: translateY(-2px);
         box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15) !important;
         transition: all 0.2s ease;
     }
 
-    /* Metrics - larger values and labels */
     [data-testid="stMetricValue"] {
         font-size: 2rem !important;
         font-weight: 600 !important;
@@ -63,7 +56,6 @@ MINIMAL_CSS = """
         font-weight: 500 !important;
     }
 
-    /* Radio button improvements - bigger, more spaced */
     .stRadio > div {
         gap: 1rem !important;
     }
@@ -81,7 +73,6 @@ MINIMAL_CSS = """
         transform: translateX(4px);
     }
 
-    /* Select boxes and inputs */
     .stSelectbox label, .stNumberInput label, .stTextInput label, .stTextArea label {
         font-size: 1.3rem !important;
         font-weight: 500 !important;
@@ -94,7 +85,6 @@ MINIMAL_CSS = """
         min-height: 3rem !important;
     }
 
-    /* Progress bars - thicker and more visible */
     .stProgress > div > div {
         height: 1.5rem !important;
         border-radius: 8px !important;
@@ -104,42 +94,35 @@ MINIMAL_CSS = """
         font-size: 1.1rem !important;
     }
 
-    /* Captions - readable but distinct */
     .element-container .stCaption {
         font-size: 1.1rem !important;
         opacity: 0.8;
     }
 
-    /* Info/Warning/Success/Error boxes - larger text */
     .stAlert {
         font-size: 1.3rem !important;
         padding: 1.2rem !important;
     }
 
-    /* Expander header */
     .streamlit-expanderHeader {
         font-size: 1.3rem !important;
         font-weight: 500 !important;
         padding: 1rem !important;
     }
 
-    /* Container max width with better padding */
     .main .block-container {
         max-width: 1000px;
         padding: 2.5rem 2rem;
     }
 
-    /* Sidebar improvements */
     section[data-testid="stSidebar"] {
         padding: 2rem 1rem !important;
     }
 
-    /* Divider spacing */
     hr {
         margin: 1.5rem 0 !important;
     }
 
-    /* Toast notifications */
     .stToast {
         font-size: 1.3rem !important;
     }
@@ -148,7 +131,7 @@ MINIMAL_CSS = """
 
 
 def inject_modern_css():
-    """Inject minimal CSS styling - Let Streamlit theme handle the rest"""
+    """Inject minimal CSS styling"""
     st.markdown(MINIMAL_CSS, unsafe_allow_html=True)
 
 
@@ -157,12 +140,11 @@ def inject_modern_css():
 # ============================================================================
 
 def show_exam_stats_sidebar(username: str):
-    """Show exam practice statistics in sidebar - Using native Streamlit"""
+    """Show exam practice statistics in sidebar"""
     st.subheader("📚 Práctica de Examen")
 
     stats = get_user_stats(username)
 
-    # Use single column layout to prevent truncation
     st.metric("📝 Respondidas", stats["total_answered"])
     st.metric("🎯 Precisión", f"{stats['accuracy']:.1f}%")
     st.metric("✅ Correctas", stats["total_correct"])
@@ -172,16 +154,13 @@ def show_exam_stats_sidebar(username: str):
 
 
 def show_flashcard_stats_sidebar(username: str):
-    """Show flashcard review statistics in sidebar - Using native Streamlit"""
+    """Show flashcard review statistics in sidebar"""
     st.subheader("🎴 Tarjetas de Estudio")
 
     fc_stats = get_flashcard_stats(username)
 
-    # Use single column layout to prevent truncation
     st.metric("📚 Revisadas", fc_stats.get("total_reviewed", 0))
     st.metric("✅ Dominadas", fc_stats.get("correct_count", 0))
-    st.metric("🤔 Parcial", fc_stats.get("partial_count", 0))
-    st.metric("❌ Revisar", fc_stats.get("wrong_count", 0))
 
 
 def show_combined_stats_sidebar(username: str):
