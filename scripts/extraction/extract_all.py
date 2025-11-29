@@ -5,6 +5,7 @@ from datetime import datetime
 from extract_mi_eunacom import extract_all_mi_eunacom
 from extract_guevara import extract_all_guevara
 from utils import save_questions, print_extraction_summary
+from config import get_raw_data_root, get_processed_data_root
 
 
 def merge_and_deduplicate(questions_list: list[list[dict]]) -> list[dict]:
@@ -34,6 +35,9 @@ def main():
     """Run all extractors and create merged database"""
     print("\n" + "="*60)
     print("🚀 MASTER EXTRACTION - ALL SOURCES (WITH IMAGES)")
+    print("="*60)
+    print(f"📂 Raw data from: {get_raw_data_root()}")
+    print(f"📂 Output to: {get_processed_data_root()}")
     print("="*60)
 
     # Extract from all sources

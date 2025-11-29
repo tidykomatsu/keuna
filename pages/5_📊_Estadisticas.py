@@ -30,7 +30,6 @@ require_auth()
 def main():
     """Statistics dashboard"""
     st.title("📊 Estadísticas de Progreso")
-    st.markdown("---")
 
     questions_df, _ = load_questions()
     stats = get_user_stats(st.session_state.username)
@@ -51,7 +50,7 @@ def main():
     with col4:
         st.metric("🎯 Precisión", f"{stats['accuracy']:.1f}%")
 
-    st.divider()
+    st.markdown("")
 
     if stats["total_answered"] > 0:
         # Mastery levels
@@ -64,29 +63,55 @@ def main():
             mastery_df = get_all_topic_masteries(st.session_state.username)
 
         if len(mastery_df) > 0:
-            for idx, row in enumerate(mastery_df.iter_rows(named=True)):
-                col1, col2, col3, col4 = st.columns([3, 2, 1, 1])
+            for row in mastery_df.iter_rows(named=True):
+                cols = st.columns([3, 1, 1])
 
-                with col1:
-                    st.markdown(f"**{row['topic']}**")
-
-                with col2:
-                    st.markdown(f"{row['stars']}")
-
-                with col3:
+                with cols[0]:
                     accuracy = row.get('accuracy', 0)
-                    if accuracy >= 80:
-                        st.success(f"{accuracy:.0f}%")
-                    elif accuracy >= 60:
-                        st.info(f"{accuracy:.0f}%")
-                    else:
-                        st.warning(f"{accuracy:.0f}%")
-
-                with col4:
                     q_count = row.get('questions_answered', 0)
-                    st.caption(f"{q_count} preguntas")
 
-            st.markdown("")
+                    # Fix grammar
+                    q_text = "pregunta" if q_count == 1 else "preguntas"
+
+                    st.markdown(f"**{row['topic']}**")
+                    st.caption(f"{q_count} {q_text}")
+
+                with cols[1]:
+                    # Show level as colored badge instead of stars
+                    level = row.get('level', 0)
+                    level_colors = {
+                        0: "#9CA3AF",  # gray
+                        1: "#F59E0B",  # amber
+                        2: "#F59E0B",
+                        3: "#10B981",  # green
+                        4: "#10B981",
+                        5: "#3B82F6",  # blue
+                    }
+                    level_names = {
+                        0: "Sin iniciar",
+                        1: "Iniciando",
+                        2: "Básico",
+                        3: "Intermedio",
+                        4: "Avanzado",
+                        5: "Dominado"
+                    }
+                    st.markdown(
+                        f'<span style="background:{level_colors[level]};color:white;'
+                        f'padding:2px 8px;border-radius:4px;font-size:0.8rem;">'
+                        f'{level_names[level]}</span>',
+                        unsafe_allow_html=True
+                    )
+
+                with cols[2]:
+                    # Accuracy as simple text, colored
+                    if accuracy >= 70:
+                        st.success(f"{accuracy:.0f}%")
+                    elif accuracy >= 50:
+                        st.warning(f"{accuracy:.0f}%")
+                    else:
+                        st.error(f"{accuracy:.0f}%")
+
+                st.markdown("")
             weakest = mastery_df.head(3)
 
             st.info(
@@ -97,7 +122,7 @@ def main():
         else:
             st.info("Comienza a responder preguntas para ver tus niveles de dominio")
 
-        st.divider()
+        st.markdown("")
 
         st.subheader("📚 Rendimiento por Tema")
 
@@ -140,7 +165,6 @@ def main():
         """)
 
     # Reset progress section
-    st.divider()
     st.markdown("### ⚠️ Zona de Peligro")
 
     with st.expander("🔄 Reiniciar Todo el Progreso"):

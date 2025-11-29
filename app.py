@@ -82,11 +82,9 @@ def main():
     with col3:
         st.metric("🎯 Precisión", f"{stats['accuracy']:.1f}%")
 
-    st.divider()
-
     # Navigation - Core Practice Modes Only
     st.markdown("### 📝 Modos de Práctica")
-    
+
     col1, col2 = st.columns(2)
     with col1:
         if st.button("📚 Práctica Aleatoria", use_container_width=True, type="primary"):
@@ -95,21 +93,15 @@ def main():
         if st.button("📖 Por Tema", use_container_width=True, type="primary"):
             st.switch_page("pages/2_📖_Por_Tema.py")
 
-    st.divider()
+    st.markdown("")
 
     # Stats
     st.markdown("### 📊 Análisis")
     if st.button("📊 Ver Estadísticas", use_container_width=True):
         st.switch_page("pages/5_📊_Estadisticas.py")
 
-    # Sidebar with stats and logout
+    # Sidebar with logout only
     with st.sidebar:
-        st.markdown("### 📊 Tu Progreso")
-
-        st.metric("📝 Total", stats["total_answered"])
-        st.metric("🎯 Precisión", f"{stats['accuracy']:.1f}%")
-
-        st.divider()
         show_logout_button()
 
 

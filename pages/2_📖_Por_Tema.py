@@ -87,7 +87,7 @@ def display_question(question: dict):
         with col2:
             st.caption(f"Pregunta #{question.get('question_number', question['question_id'])}")
 
-        st.markdown("---")
+        st.markdown("")
         st.markdown(f"**{question['question_text']}**")
         
         # Display images if present
@@ -130,7 +130,7 @@ def display_question(question: dict):
             st.rerun()
 
     if st.session_state.answered:
-        st.markdown("---")
+        st.markdown("")
 
         correct_opt = next(opt for opt in question["answer_options"] if opt["is_correct"])
         selected_opt = next(
@@ -181,7 +181,6 @@ def display_question(question: dict):
 def main():
     """Topic-based practice"""
     st.title("📖 Práctica por Tema")
-    st.markdown("---")
 
     init_state()
 
@@ -196,10 +195,10 @@ def main():
         st.markdown("### 📊 Tu Progreso")
         stats = get_user_stats(st.session_state.username)
 
-        st.metric("📝 Respondidas", stats["total_answered"])
-        st.metric("🎯 Precisión", f"{stats['accuracy']:.1f}%")
+        st.metric("Respondidas", stats["total_answered"])
+        st.metric("Precisión", f"{stats['accuracy']:.1f}%")
 
-        st.divider()
+        st.markdown("")
 
         st.markdown("### 📚 Selecciona Tema")
         topics = sorted(questions_df["topic"].unique().to_list())
@@ -233,7 +232,7 @@ def main():
         progress_pct = (len(topic_answered) / len(topic_df)) * 100
         st.progress(progress_pct / 100, text=f"Progreso en este tema: {progress_pct:.0f}% ({len(topic_answered)}/{len(topic_df)})")
 
-    st.markdown("---")
+    st.markdown("")
 
     if st.session_state.current_question is None or st.session_state.refresh_question:
         from src.question_selector import select_adaptive_cached

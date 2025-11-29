@@ -4,6 +4,7 @@ from bs4 import BeautifulSoup
 from pathlib import Path
 import re
 from utils import save_questions, print_extraction_summary
+from config import get_raw_data_root
 
 
 # ============================================================================
@@ -151,8 +152,8 @@ def extract_from_file(filepath: Path) -> list[dict]:
 
 def extract_all_guevara() -> list[dict]:
     """Main extraction function"""
-    project_root = Path(__file__).parent.parent.parent
-    raw_dir = project_root / "data" / "raw" / "guevara"
+    raw_root = get_raw_data_root()
+    raw_dir = raw_root / "guevara"
 
     html_files = sorted(list(raw_dir.rglob("*.html")) + list(raw_dir.rglob("*.htm")))
 

@@ -5,6 +5,7 @@ import html as html_module
 from pathlib import Path
 import re
 from utils import save_questions, print_extraction_summary
+from config import get_raw_data_root
 
 
 # ============================================================================
@@ -224,8 +225,8 @@ def extract_from_file(filepath: Path) -> list[dict]:
 
 def extract_all_mi_eunacom() -> list[dict]:
     """Main extraction function"""
-    project_root = Path(__file__).parent.parent.parent
-    raw_dir = project_root / "data" / "raw" / "mi_eunacom"
+    raw_root = get_raw_data_root()
+    raw_dir = raw_root / "mi_eunacom"
 
     html_files = sorted(list(raw_dir.glob("*.html")) + list(raw_dir.glob("*.htm")))
 

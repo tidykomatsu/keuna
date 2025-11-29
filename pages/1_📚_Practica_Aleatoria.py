@@ -90,7 +90,7 @@ def display_question(question: dict):
         with col2:
             st.caption(f"Pregunta #{question.get('question_number', question['question_id'])}")
 
-        st.markdown("---")
+        st.markdown("")
         st.markdown(f"**{question['question_text']}**")
         
         # Display images if present
@@ -137,7 +137,7 @@ def display_question(question: dict):
     # FEEDBACK SECTION
     # ============================================================================
     if st.session_state.answered:
-        st.markdown("---")
+        st.markdown("")
 
         correct_opt = next(opt for opt in question["answer_options"] if opt["is_correct"])
         selected_opt = next(
@@ -186,7 +186,6 @@ def display_question(question: dict):
 def main():
     """Main practice mode logic"""
     st.title("📚 Práctica Aleatoria")
-    st.markdown("---")
 
     init_state()
 

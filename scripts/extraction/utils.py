@@ -3,14 +3,12 @@
 from pathlib import Path
 import json
 from datetime import datetime
+from config import get_processed_data_root
 
 
 def save_questions(questions: list[dict], output_name: str) -> Path:
     """Save questions to JSON with timestamp"""
-    project_root = Path(__file__).parent.parent.parent
-    processed_dir = project_root / "data" / "processed"
-    processed_dir.mkdir(parents=True, exist_ok=True)
-
+    processed_dir = get_processed_data_root()
     output_file = processed_dir / f"{output_name}.json"
 
     with open(output_file, "w", encoding="utf-8") as f:
