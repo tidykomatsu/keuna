@@ -1,7 +1,7 @@
 """
 Script to import questions from JSON file into Supabase
 Run this once to populate your database
-WITH IMAGE SUPPORT
+WITH IMAGE SUPPORT AND STRICT VALIDATION
 """
 
 import json
@@ -23,9 +23,86 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from src.database import insert_questions_from_json, get_question_count
 
+
 # ============================================================================
-# Validation
+# Schema Definition (same as extraction/utils.py)
 # ============================================================================
+
+REQUIRED_FIELDS = [
+    "question_id",
+    "question_number",
+    "topic",
+    "question_text",
+    "answer_options",
+    "correct_answer",
+    "explanation",
+]
+
+ANSWER_OPTION_REQUIRED = ["letter", "text", "is_correct"]
+
+
+# ============================================================================
+# Validation with Assertions
+# ============================================================================
+
+def validate_question_structure(question: dict) -> tuple[bool, list[str]]:
+    """
+    Validate question has all required fields with correct types.
+    Returns (is_valid, list_of_issues)
+    """
+    issues = []
+    q_id = question.get("question_id", "UNKNOWN")
+
+    # Check required fields
+    for field in REQUIRED_FIELDS:
+        if field not in question:
+            issues.append(f"[{q_id}] Missing field: {field}")
+
+    # question_id validation
+    q_id_value = question.get("question_id", "")
+    if not q_id_value or not str(q_id_value).strip():
+        issues.append(f"[{q_id}] Empty question_id")
+
+    # question_text validation
+    q_text = question.get("question_text", "")
+    if not q_text or not str(q_text).strip():
+        issues.append(f"[{q_id}] Empty question_text")
+
+    # topic validation
+    topic = question.get("topic")
+    if topic is None or (isinstance(topic, str) and not topic.strip()):
+        issues.append(f"[{q_id}] Empty or missing topic")
+
+    # answer_options validation
+    opts = question.get("answer_options")
+    if not isinstance(opts, list):
+        issues.append(f"[{q_id}] answer_options must be a list")
+    elif len(opts) == 0:
+        issues.append(f"[{q_id}] No answer options")
+    else:
+        # Validate each option structure
+        for i, opt in enumerate(opts):
+            if not isinstance(opt, dict):
+                issues.append(f"[{q_id}] answer_options[{i}] must be a dict")
+                continue
+            
+            for field in ANSWER_OPTION_REQUIRED:
+                if field not in opt:
+                    issues.append(f"[{q_id}] answer_options[{i}] missing '{field}'")
+        
+        # Must have exactly one correct answer
+        correct_count = sum(1 for opt in opts if opt.get("is_correct", False))
+        if correct_count == 0:
+            issues.append(f"[{q_id}] No correct answer marked")
+        elif correct_count > 1:
+            issues.append(f"[{q_id}] Multiple correct answers ({correct_count})")
+
+    # images validation (optional but must be list if present)
+    images = question.get("images", [])
+    if not isinstance(images, list):
+        issues.append(f"[{q_id}] 'images' must be a list")
+
+    return len(issues) == 0, issues
 
 
 def has_correct_answer(question: dict) -> bool:
@@ -33,43 +110,32 @@ def has_correct_answer(question: dict) -> bool:
     return any(opt.get("is_correct", False) for opt in question.get("answer_options", []))
 
 
-def validate_question_structure(question: dict) -> tuple[bool, str]:
+def assert_no_duplicate_ids(questions: list[dict]):
     """
-    Validate question has all required fields
-    Returns (is_valid, error_message)
+    Assert no duplicate question IDs exist.
+    Fails fast with detailed error.
     """
-    required_fields = [
-        "question_id",
-        "question_number",
-        "topic",
-        "question_text",
-        "answer_options",
-        "correct_answer",
-        "explanation",
-    ]
-
-    for field in required_fields:
-        if field not in question:
-            return False, f"Missing field: {field}"
-
-    if not isinstance(question["answer_options"], list):
-        return False, "answer_options must be a list"
-
-    if len(question["answer_options"]) == 0:
-        return False, "No answer options"
-
-    for opt in question["answer_options"]:
-        if "letter" not in opt:
-            return False, "Answer option missing 'letter'"
-        if "text" not in opt:
-            return False, "Answer option missing 'text'"
-        if "is_correct" not in opt:
-            return False, "Answer option missing 'is_correct'"
-
-    if not has_correct_answer(question):
-        return False, "No correct answer marked"
-
-    return True, ""
+    seen = {}
+    duplicates = []
+    
+    for q in questions:
+        q_id = q.get("question_id", "")
+        if q_id in seen:
+            duplicates.append({
+                "id": q_id,
+                "first_idx": seen[q_id],
+                "second_idx": questions.index(q)
+            })
+        else:
+            seen[q_id] = questions.index(q)
+    
+    if duplicates:
+        error_lines = ["DUPLICATE QUESTION IDS FOUND:"]
+        for dup in duplicates[:10]:
+            error_lines.append(f"  ID '{dup['id']}' at indices {dup['first_idx']} and {dup['second_idx']}")
+        if len(duplicates) > 10:
+            error_lines.append(f"  ... and {len(duplicates) - 10} more")
+        raise AssertionError("\n".join(error_lines))
 
 
 # ============================================================================
@@ -78,19 +144,24 @@ def validate_question_structure(question: dict) -> tuple[bool, str]:
 
 
 def import_questions_from_file(filepath: str):
-    """Import questions from JSON file"""
+    """Import questions from JSON file with strict validation"""
 
+    print(f"\n{'='*60}")
     print(f"📂 Loading questions from: {filepath}")
+    print(f"{'='*60}")
+
+    # File existence check
+    assert os.path.exists(filepath), f"File not found: {filepath}"
 
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             questions = json.load(f)
-    except FileNotFoundError:
-        print(f"❌ File not found: {filepath}")
-        return
     except json.JSONDecodeError as e:
-        print(f"❌ Invalid JSON: {e}")
-        return
+        raise AssertionError(f"Invalid JSON in {filepath}: {e}")
+
+    # Type check
+    assert isinstance(questions, list), f"Expected list, got {type(questions)}"
+    assert len(questions) > 0, "Empty questions list"
 
     print(f"📊 Found {len(questions)} questions")
 
@@ -98,56 +169,86 @@ def import_questions_from_file(filepath: str):
         questions = questions[:TEST_LIMIT]
         print(f"🧪 TEST MODE: Limiting to {len(questions)} questions\n")
 
-    # Filter and validate
-    print("🔍 Validating question structure...")
+    # ============================================================================
+    # CRITICAL: Check for duplicate IDs FIRST
+    # ============================================================================
+    print("🔍 Checking for duplicate IDs...")
+    assert_no_duplicate_ids(questions)
+    print("✅ No duplicate IDs found")
+
+    # ============================================================================
+    # Validate and filter
+    # ============================================================================
+    print("\n🔍 Validating question structure...")
+    
     valid_questions = []
-    skipped_count = 0
+    all_issues = []
     with_images_count = 0
 
     for i, q in enumerate(questions, 1):
-        is_valid, error_msg = validate_question_structure(q)
+        is_valid, issues = validate_question_structure(q)
 
         if not is_valid:
-            print(f"⚠️  Skipping question {i} ({q.get('question_id', 'unknown')}): {error_msg}")
-            skipped_count += 1
+            all_issues.extend(issues)
+            # Print first 10 issues inline
+            if len([iss for iss in all_issues if iss.startswith(f"[{q.get('question_id', 'UNKNOWN')}]")]) <= 1:
+                for iss in issues[:3]:
+                    print(f"  ⚠️  {iss}")
             continue
 
-        if not q.get("topic") or q["topic"].strip() == "":
-            print(f"⚠️  Skipping question {i}: Empty topic")
-            skipped_count += 1
-            continue
-
-        # Ensure images field exists (default to empty list)
+        # Ensure images field exists
         if "images" not in q:
             q["images"] = []
-        
+
         if q["images"]:
             with_images_count += 1
 
         valid_questions.append(q)
 
-    print(f"✅ Validation passed: {len(valid_questions)} valid questions")
+    print(f"\n{'='*60}")
+    print(f"📊 VALIDATION RESULTS")
+    print(f"{'='*60}")
+    print(f"✅ Valid questions: {len(valid_questions)}")
+    print(f"❌ Invalid questions: {len(questions) - len(valid_questions)}")
     print(f"📸 Questions with images: {with_images_count}")
-
-    if skipped_count > 0:
-        print(f"⚠️  Skipped {skipped_count} invalid questions")
+    
+    if all_issues:
+        # Group issues by type
+        issue_types = {}
+        for iss in all_issues:
+            # Extract type: "[ID] Type: ..."
+            parts = iss.split("]")
+            if len(parts) > 1:
+                issue_type = parts[1].strip().split(":")[0] if ":" in parts[1] else parts[1].strip()
+            else:
+                issue_type = iss
+            issue_types[issue_type] = issue_types.get(issue_type, 0) + 1
+        
+        print(f"\n⚠️  Issue breakdown:")
+        for issue_type, count in sorted(issue_types.items(), key=lambda x: -x[1]):
+            print(f"   {issue_type}: {count}")
 
     if len(valid_questions) == 0:
-        print("❌ No valid questions to import")
-        return
+        raise AssertionError("No valid questions to import!")
 
+    # ============================================================================
     # Insert into database
-    print("\n💾 Inserting into database...")
+    # ============================================================================
+    print(f"\n{'='*60}")
+    print("💾 Inserting into database...")
+    print(f"{'='*60}")
+    
     success_count, error_count = insert_questions_from_json(valid_questions)
 
-    print(f"\n{'='*60}")
-    print(f"✅ Successfully inserted: {success_count}")
-    print(f"❌ Errors: {error_count}")
-    print(f"{'='*60}")
+    print(f"\n✅ Successfully inserted: {success_count}")
+    print(f"❌ Database errors: {error_count}")
 
     # Verify
     total_in_db = get_question_count()
     print(f"\n📊 Total questions in database: {total_in_db}")
+
+    # Post-import assertion
+    assert success_count > 0, "No questions were imported successfully!"
 
     # Show topic distribution
     print("\n📚 Topics loaded:")
@@ -156,11 +257,12 @@ def import_questions_from_file(filepath: str):
         topic = q["topic"]
         topics[topic] = topics.get(topic, 0) + 1
 
-    for topic, count in sorted(topics.items(), key=lambda x: x[1], reverse=True):
+    for topic, count in sorted(topics.items(), key=lambda x: -x[1]):
         print(f"   {topic}: {count}")
 
-    # Show image distribution
-    print(f"\n📸 Questions with images: {with_images_count}/{len(valid_questions)}")
+    print(f"\n{'='*60}")
+    print("✅ IMPORT COMPLETE")
+    print(f"{'='*60}\n")
 
 
 if __name__ == "__main__":
