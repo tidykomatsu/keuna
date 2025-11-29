@@ -165,6 +165,7 @@ def main():
         """)
 
     # Reset progress section
+    st.divider()
     st.markdown("### ⚠️ Zona de Peligro")
 
     with st.expander("🔄 Reiniciar Todo el Progreso"):

@@ -55,8 +55,8 @@ def inject_modern_css():
 # ============================================================================
 
 def show_exam_stats_sidebar(username: str):
-    """Show exam practice statistics in sidebar"""
-    st.subheader("📚 Práctica de Examen")
+    """Show user progress statistics in sidebar"""
+    st.subheader("📊 Tu Progreso")
 
     stats = get_user_stats(username)
 

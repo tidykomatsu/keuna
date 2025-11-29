@@ -16,7 +16,7 @@ def get_raw_data_root() -> Path:
       2. Default: project_root/data/raw
     """
     env_path = os.getenv("EUNACOM_RAW_DATA")
-
+    print(env_path)
     if env_path:
         path = Path(env_path)
         assert path.exists(), f"EUNACOM_RAW_DATA path does not exist: {path}"
@@ -24,6 +24,7 @@ def get_raw_data_root() -> Path:
 
     # Default: relative to project
     project_root = Path(__file__).parent.parent.parent
+    print(project_root)
     return project_root / "data" / "raw"
 
 

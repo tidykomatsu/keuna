@@ -83,12 +83,12 @@ def display_question(question: dict):
         col1, col2 = st.columns([3, 1])
         with col1:
             if question.get('topic'):
-                st.caption(f"📚 {question['topic']}")
+                st.caption(f"Tema: {question['topic']}")
         with col2:
-            st.caption(f"Pregunta #{question.get('question_number', question['question_id'])}")
+            st.caption(f"#{question.get('question_number', question['question_id'])}")
 
         st.markdown("")
-        st.markdown(f"**{question['question_text']}**")
+        st.markdown(f"### {question['question_text']}")
         
         # Display images if present
         display_question_images(question)
