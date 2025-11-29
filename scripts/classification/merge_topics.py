@@ -43,19 +43,19 @@ from config import get_processed_data_root
 from utils import save_questions, print_extraction_summary, validate_question_strict
 
 PROCESSED_DIR = get_processed_data_root()
-PROJECT_ROOT = Path(__file__).parent.parent.parent
 
-# Input: Use questions.json from project root (output of extract_all.py)
-# Fall back to merged_all.json if questions.json doesn't exist
-FRESH_FILE = PROJECT_ROOT / "questions.json"
-if not FRESH_FILE.exists():
-    FRESH_FILE = PROCESSED_DIR / "merged_all.json"
+# Input: data/processed/extracted.json (output of extract_all.py)
+FRESH_FILE = PROCESSED_DIR / "extracted.json"
 
+# Historical topics (Gemini API classification) - used as lookup for missing topics
 HISTORICAL_FILE = PROCESSED_DIR / "questions_categorized.json"
+
+# Optional manual overrides
 MANUAL_FILE = PROCESSED_DIR / "manual_topics.csv"
 
-OUTPUT_FINAL = PROJECT_ROOT / "questions_final.json"
-UNCLASSIFIED_REPORT = PROJECT_ROOT / "unclassified_report.csv"
+# Output: data/processed/questions_ready.json (ready for import)
+OUTPUT_FINAL = PROCESSED_DIR / "questions_ready.json"
+UNCLASSIFIED_REPORT = PROCESSED_DIR / "unclassified_report.csv"
 
 # 24 valid topics
 VALID_TOPICS = [
@@ -101,7 +101,7 @@ def load_fresh_extraction() -> list[dict]:
     assert isinstance(questions, list), "Fresh extraction must be a list"
     assert len(questions) > 0, "Fresh extraction is empty"
 
-    print(f"✅ Loaded {len(questions)} questions from merged_all.json")
+    print(f"✅ Loaded {len(questions)} questions from {FRESH_FILE.name}")
 
     return questions
 
@@ -120,7 +120,7 @@ def load_historical_topics() -> pl.DataFrame:
     # Create DataFrame with only question_id and topic columns
     df = pl.DataFrame(historical).select(["question_id", "topic"])
 
-    print(f"✅ Loaded {len(df)} historical topics from questions_categorized.json")
+    print(f"✅ Loaded {len(df)} historical topics from {HISTORICAL_FILE.name}")
 
     return df
 

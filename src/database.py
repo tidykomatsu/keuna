@@ -52,9 +52,9 @@ def init_database():
 # ============================================================================
 
 
-def insert_questions_from_json(questions: list[dict]) -> tuple[int, int]:
+def insert_questions_from_json(questions: list[dict], batch_size: int = 100) -> tuple[int, int]:
     """
-    Insert questions from JSON structure into database
+    Insert questions from JSON structure into database in batches.
     Returns (success_count, error_count)
     """
     conn = get_connection()
@@ -62,12 +62,12 @@ def insert_questions_from_json(questions: list[dict]) -> tuple[int, int]:
 
     success_count = 0
     error_count = 0
+    total = len(questions)
 
-    for question in questions:
+    for i, question in enumerate(questions):
         try:
-            # Handle images field (new)
             images = question.get("images", [])
-            
+
             cursor.execute(
                 """
                 INSERT INTO questions (
@@ -102,6 +102,12 @@ def insert_questions_from_json(questions: list[dict]) -> tuple[int, int]:
                 ),
             )
             success_count += 1
+
+            # Commit and print progress every batch_size questions
+            if (i + 1) % batch_size == 0:
+                conn.commit()
+                print(f"   ✅ {i + 1}/{total} inserted...")
+
         except Exception as e:
             error_count += 1
             print(f"❌ Error inserting question {question['question_id']}: {e}")
@@ -109,6 +115,7 @@ def insert_questions_from_json(questions: list[dict]) -> tuple[int, int]:
             cursor = conn.cursor()
             continue
 
+    # Final commit
     conn.commit()
     cursor.close()
     conn.close()

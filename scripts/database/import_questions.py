@@ -13,10 +13,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ============================================================================
-# TEST MODE - Set to True to import only first 10 questions
+# TEST MODE - Set to True to import only questions with images
 # ============================================================================
 TEST_MODE = False
 TEST_LIMIT = 10
+TEST_IMAGES_ONLY = True  # When TEST_MODE=True, only import questions with images
 
 # Add parent directory to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -166,6 +167,9 @@ def import_questions_from_file(filepath: str):
     print(f"📊 Found {len(questions)} questions")
 
     if TEST_MODE:
+        if TEST_IMAGES_ONLY:
+            questions = [q for q in questions if q.get("images")]
+            print(f"🧪 TEST MODE: Filtered to {len(questions)} questions with images")
         questions = questions[:TEST_LIMIT]
         print(f"🧪 TEST MODE: Limiting to {len(questions)} questions\n")
 
@@ -265,9 +269,19 @@ def import_questions_from_file(filepath: str):
     print(f"{'='*60}\n")
 
 
+def get_default_input_path() -> str:
+    """Get default input path from config (respects EUNACOM_PROCESSED_DATA env var)"""
+    # Add extraction dir to path to import config
+    script_dir = os.path.dirname(__file__)
+    extraction_dir = os.path.join(script_dir, "..", "extraction")
+    sys.path.insert(0, extraction_dir)
+
+    from config import get_processed_data_root
+    return str(get_processed_data_root() / "questions_ready.json")
+
+
 if __name__ == "__main__":
-    # Default to categorized file
-    default_file = r"data/processed/questions_categorized.json"
+    default_file = get_default_input_path()
     filepath = default_file
 
     if len(sys.argv) > 1:
@@ -277,6 +291,10 @@ if __name__ == "__main__":
         print(f"❌ File not found: {filepath}")
         print(f"\nUsage: python {sys.argv[0]} [path_to_questions.json]")
         print(f"Default file: {default_file}")
+        print(f"\nPipeline:")
+        print(f"  1. Run extract_all.py     → extracted.json")
+        print(f"  2. Run merge_topics.py    → questions_ready.json")
+        print(f"  3. Run import_questions.py (this script)")
         sys.exit(1)
 
     import_questions_from_file(filepath)
