@@ -231,6 +231,27 @@ def get_questions_with_images_count() -> int:
     return count
 
 
+def get_random_question_with_images() -> dict | None:
+    """Get a random question that has at least one image"""
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+    cursor.execute(
+        """
+        SELECT * FROM questions
+        WHERE images != '[]'::jsonb
+        ORDER BY RANDOM()
+        LIMIT 1
+        """
+    )
+
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+
+    return dict(row) if row else None
+
+
 # ============================================================================
 # USER ANSWERS
 # ============================================================================
