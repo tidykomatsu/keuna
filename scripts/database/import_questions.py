@@ -15,8 +15,8 @@ load_dotenv()
 # ============================================================================
 # TEST MODE - Set to True to import only questions with images
 # ============================================================================
-TEST_MODE = False
-TEST_LIMIT = 10
+TEST_MODE = True
+TEST_LIMIT = 200
 TEST_IMAGES_ONLY = True  # When TEST_MODE=True, only import questions with images
 
 # Add parent directory to path

@@ -1,30 +1,45 @@
 """
 Merge topics from historical classifications into fresh extraction.
 Replaces the Gemini API classification step.
+Also migrates images from Moodle to Supabase Storage.
 
 Input:
-    - merged_all.json (fresh extraction, topics may be empty)
+    - extracted.json (fresh extraction, topics may be empty)
     - questions_categorized.json (historical, only use question_id + topic)
     - manual_topics.csv (optional overrides)
 
 Output:
-    - questions_final.json (ready for import)
+    - questions_ready.json (ready for import, with Supabase image URLs)
     - unclassified_report.csv (questions still without topic)
 
 Manual topics CSV format:
     question_id,topic
     some_id,Cardiología
     another_id,Neurología
+
+Environment variables required for image migration:
+    - SUPABASE_URL
+    - SUPABASE_SERVICE_ROLE_KEY
+    - MOODLE_SESSION (get from browser when logged into Moodle)
 """
 
 import sys
 import io
 import json
 import csv
+import os
+import re
+import time
 from pathlib import Path
 from collections import Counter
+from urllib.parse import urlparse
+
 import polars as pl
+import requests
+from dotenv import load_dotenv
 from sys import path as sys_path
+
+load_dotenv()
 
 # Fix encoding on Windows
 if sys.platform == "win32":
@@ -84,6 +99,153 @@ VALID_TOPICS = [
     "Pediatría",
     "Medicina Legal",
 ]
+
+# ============================================================================
+# Supabase Storage Configuration
+# ============================================================================
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+MOODLE_SESSION = os.getenv("MOODLE_SESSION", "")
+BUCKET_NAME = "question-images"
+
+
+# ============================================================================
+# Image Migration Functions
+# ============================================================================
+
+
+def can_migrate_images() -> bool:
+    """Check if image migration is possible"""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return False
+    if not MOODLE_SESSION:
+        return False
+    return True
+
+
+def get_supabase_client():
+    """Initialize Supabase client"""
+    from supabase import create_client
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
+
+
+def download_image(url: str, session: requests.Session) -> bytes | None:
+    """Download image from Moodle URL"""
+    try:
+        response = session.get(url, timeout=30)
+        response.raise_for_status()
+
+        content_type = response.headers.get("content-type", "")
+        if "image" not in content_type and "octet-stream" not in content_type:
+            print(f"  ⚠️  Not an image: {content_type}")
+            return None
+
+        return response.content
+    except requests.RequestException as e:
+        print(f"  ❌ Download failed: {e}")
+        return None
+
+
+def generate_storage_path(question_id: str, image_index: int, original_url: str) -> str:
+    """Generate storage path for image"""
+    parsed = urlparse(original_url)
+    filename = parsed.path.split("/")[-1]
+    ext = Path(filename).suffix or ".jpg"
+    safe_id = re.sub(r'[^a-zA-Z0-9_-]', '_', question_id)
+    return f"{safe_id}_{image_index}{ext}"
+
+
+def upload_to_supabase(client, file_path: str, image_data: bytes) -> str | None:
+    """Upload image to Supabase Storage and return public URL"""
+    try:
+        client.storage.from_(BUCKET_NAME).upload(
+            file_path,
+            image_data,
+            {"content-type": "image/jpeg", "upsert": "true"}
+        )
+        return client.storage.from_(BUCKET_NAME).get_public_url(file_path)
+    except Exception as e:
+        print(f"  ❌ Upload failed: {e}")
+        return None
+
+
+def is_already_migrated(url: str) -> bool:
+    """Check if URL is already a Supabase URL"""
+    return "supabase" in url if url else True
+
+
+def migrate_images(questions: list[dict]) -> list[dict]:
+    """Migrate all images from Moodle to Supabase Storage"""
+
+    if not can_migrate_images():
+        print("\n⚠️  Image migration skipped (missing credentials or MOODLE_SESSION)")
+        print("   Set MOODLE_SESSION in .env to enable image migration")
+        return questions
+
+    print(f"\n{'='*60}")
+    print("🖼️  MIGRATING IMAGES TO SUPABASE")
+    print(f"{'='*60}")
+
+    # Setup HTTP session with Moodle cookies
+    session = requests.Session()
+    session.cookies.set("MoodleSession", MOODLE_SESSION, domain="cursosonline.doctorguevara.cl")
+    session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
+
+    # Setup Supabase client
+    supabase = get_supabase_client()
+
+    stats = {"total": 0, "migrated": 0, "skipped": 0, "failed": 0}
+
+    questions_with_images = [q for q in questions if q.get("images")]
+    print(f"📸 Found {len(questions_with_images)} questions with images")
+
+    for question in questions_with_images:
+        question_id = question["question_id"]
+        new_images = []
+
+        for idx, image_url in enumerate(question.get("images", []), 1):
+            stats["total"] += 1
+
+            if not image_url or is_already_migrated(image_url):
+                new_images.append(image_url)
+                stats["skipped"] += 1
+                continue
+
+            print(f"  📥 {question_id} img {idx}...", end=" ")
+
+            # Download
+            image_data = download_image(image_url, session)
+            if not image_data:
+                stats["failed"] += 1
+                new_images.append(image_url)
+                continue
+
+            # Upload
+            storage_path = generate_storage_path(question_id, idx, image_url)
+            public_url = upload_to_supabase(supabase, storage_path, image_data)
+
+            if public_url:
+                stats["migrated"] += 1
+                new_images.append(public_url)
+                print("✅")
+            else:
+                stats["failed"] += 1
+                new_images.append(image_url)
+
+            time.sleep(0.1)  # Rate limiting
+
+        question["images"] = new_images
+
+    print(f"\n{'='*60}")
+    print("📊 IMAGE MIGRATION SUMMARY")
+    print(f"{'='*60}")
+    print(f"  Total images:  {stats['total']}")
+    print(f"  ✅ Migrated:   {stats['migrated']}")
+    print(f"  ⏭️  Skipped:    {stats['skipped']} (already migrated)")
+    print(f"  ❌ Failed:     {stats['failed']}")
+
+    return questions
 
 
 # ============================================================================
@@ -292,7 +454,7 @@ def main():
     """Main pipeline"""
 
     print("\n" + "="*60)
-    print("🔄 TOPIC MERGE PIPELINE")
+    print("🔄 TOPIC MERGE + IMAGE MIGRATION PIPELINE")
     print("="*60 + "\n")
 
     # Load inputs
@@ -308,12 +470,11 @@ def main():
     # Print statistics
     print_topic_distribution(merged_questions)
 
-    # Save outputs
-    print(f"\n💾 Saving outputs...")
+    # Migrate images to Supabase Storage
+    merged_questions = migrate_images(merged_questions)
 
     # Validate before saving
-    print(f"🔍 Validating {len(merged_questions)} questions...")
-    # Note: not using full assert_questions_valid to allow partial data
+    print(f"\n🔍 Validating {len(merged_questions)} questions...")
     total_issues = 0
     for q in merged_questions:
         issues = validate_question_strict(q, raise_on_error=False)
@@ -322,19 +483,34 @@ def main():
     if total_issues > 0:
         print(f"⚠️  WARNING: {total_issues} validation issues found (saving anyway)")
 
-    # Save to project root
+    # Save outputs
+    print(f"\n💾 Saving outputs...")
     OUTPUT_FINAL.parent.mkdir(parents=True, exist_ok=True)
     with open(OUTPUT_FINAL, "w", encoding="utf-8") as f:
         json.dump(merged_questions, f, ensure_ascii=False, indent=2)
 
     assert OUTPUT_FINAL.exists(), f"Failed to create output file: {OUTPUT_FINAL}"
-    print(f"✅ Saved merged questions: {OUTPUT_FINAL.name}")
+    print(f"✅ Saved: {OUTPUT_FINAL.name}")
 
     # Save unclassified report
     save_unclassified_report(unclassified)
 
+    # Final summary
+    with_images = sum(1 for q in merged_questions if q.get("images"))
+    supabase_images = sum(
+        1 for q in merged_questions
+        for img in q.get("images", [])
+        if img and "supabase" in img
+    )
+
     print(f"\n{'='*60}")
-    print("✅ MERGE COMPLETE!")
+    print("✅ PIPELINE COMPLETE!")
+    print(f"{'='*60}")
+    print(f"   Total questions: {len(merged_questions)}")
+    print(f"   With images: {with_images}")
+    print(f"   Supabase URLs: {supabase_images}")
+    print(f"\nNext step:")
+    print(f"   python scripts/database/import_questions.py")
     print(f"{'='*60}\n")
 
 
