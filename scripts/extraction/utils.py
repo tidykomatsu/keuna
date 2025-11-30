@@ -21,6 +21,9 @@ QUESTION_SCHEMA = {
     "images": list,
     "source_file": str,
     "source_type": str,
+    # Optional reconstruction fields (can be None)
+    "reconstruction_name": (str, type(None)),
+    "reconstruction_order": (int, type(None)),
 }
 
 ANSWER_OPTION_SCHEMA = {
@@ -49,19 +52,16 @@ def validate_question_strict(q: dict, raise_on_error: bool = True) -> list[str]:
     issues = []
     q_id = q.get("question_id", "UNKNOWN")
     
-    # Required fields
-    for field, expected_type in QUESTION_SCHEMA.items():
+    # Required fields (excluding optional reconstruction fields)
+    required_fields = [
+        "question_id", "question_number", "topic", "question_text",
+        "answer_options", "correct_answer", "explanation", "images",
+        "source_file", "source_type"
+    ]
+    
+    for field in required_fields:
         if field not in q:
             issues.append(f"[{q_id}] Missing required field: {field}")
-            continue
-        
-        # Type check (allow None for optional string fields)
-        value = q[field]
-        if field in ("topic", "explanation", "source_file") and value is None:
-            continue  # These can be None
-        
-        if not isinstance(value, expected_type):
-            issues.append(f"[{q_id}] Field '{field}' has wrong type: expected {expected_type.__name__}, got {type(value).__name__}")
     
     # question_id must not be empty
     if not q.get("question_id", "").strip():
@@ -103,6 +103,19 @@ def validate_question_strict(q: dict, raise_on_error: bool = True) -> list[str]:
         for i, img in enumerate(images):
             if not isinstance(img, str):
                 issues.append(f"[{q_id}] images[{i}] is not a string")
+    
+    # Reconstruction fields validation (optional but must be correct type if present)
+    recon_name = q.get("reconstruction_name")
+    if recon_name is not None and not isinstance(recon_name, str):
+        issues.append(f"[{q_id}] reconstruction_name must be string or None")
+    
+    recon_order = q.get("reconstruction_order")
+    if recon_order is not None and not isinstance(recon_order, int):
+        issues.append(f"[{q_id}] reconstruction_order must be int or None")
+    
+    # If one reconstruction field is set, both should be set
+    if (recon_name is not None) != (recon_order is not None):
+        issues.append(f"[{q_id}] reconstruction_name and reconstruction_order must both be set or both be None")
     
     if raise_on_error and issues:
         raise AssertionError(f"Validation failed:\n" + "\n".join(issues))
@@ -166,6 +179,22 @@ def assert_questions_valid(questions: list[dict], source_name: str = ""):
 
 
 # ============================================================================
+# Ensure Reconstruction Fields
+# ============================================================================
+
+def ensure_reconstruction_fields(question: dict) -> dict:
+    """
+    Ensure question has reconstruction fields (set to None if not present).
+    This normalizes the schema for database import.
+    """
+    if "reconstruction_name" not in question:
+        question["reconstruction_name"] = None
+    if "reconstruction_order" not in question:
+        question["reconstruction_order"] = None
+    return question
+
+
+# ============================================================================
 # Save with Validation
 # ============================================================================
 
@@ -181,6 +210,10 @@ def save_questions(questions: list[dict], output_name: str, validate: bool = Tru
     # Pre-save assertions
     assert isinstance(questions, list), "questions must be a list"
     assert len(questions) > 0, "questions list is empty"
+    
+    # Ensure all questions have reconstruction fields
+    for q in questions:
+        ensure_reconstruction_fields(q)
     
     if validate:
         print(f"🔍 Validating {len(questions)} questions...")
@@ -253,6 +286,15 @@ def print_extraction_summary(questions: list[dict], source_name: str):
     total_images = sum(len(q.get("images", [])) for q in questions)
     print(f"\n📸 Questions with images: {with_images}/{len(questions)}")
     print(f"📸 Total image URLs: {total_images}")
+
+    # Reconstruction summary
+    recon_questions = [q for q in questions if q.get("reconstruction_name")]
+    if recon_questions:
+        recon_names = set(q.get("reconstruction_name") for q in recon_questions)
+        print(f"\n📋 Reconstrucciones: {len(recon_questions)} questions in {len(recon_names)} exams")
+        for name in sorted(recon_names):
+            count = sum(1 for q in recon_questions if q.get("reconstruction_name") == name)
+            print(f"   - {name}: {count} questions")
 
     # Source files breakdown
     source_files = {}

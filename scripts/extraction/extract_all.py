@@ -5,6 +5,7 @@ from datetime import datetime
 from extract_mi_eunacom import extract_all_mi_eunacom
 from extract_mi_eunacom_topics import extract_all_mi_eunacom_topics
 from extract_guevara import extract_all_guevara
+from extract_reconstrucciones import extract_all_reconstrucciones
 from utils import save_questions, print_extraction_summary
 from config import get_raw_data_root, get_processed_data_root
 
@@ -45,6 +46,7 @@ def main():
     mi_eunacom_questions = extract_all_mi_eunacom()
     mi_eunacom_topics_questions = extract_all_mi_eunacom_topics()
     guevara_questions = extract_all_guevara()
+    reconstrucciones_questions = extract_all_reconstrucciones()
 
     # Merge
     print(f"\n{'='*60}")
@@ -54,7 +56,8 @@ def main():
     all_questions = merge_and_deduplicate([
         mi_eunacom_questions,
         mi_eunacom_topics_questions,
-        guevara_questions
+        guevara_questions,
+        reconstrucciones_questions,
     ])
 
     print_extraction_summary(all_questions, "MERGED (ALL SOURCES)")
@@ -67,6 +70,10 @@ def main():
     with_images = sum(1 for q in all_questions if q.get("images"))
     total_images = sum(len(q.get("images", [])) for q in all_questions)
     
+    # Reconstruction summary
+    recon_questions = [q for q in all_questions if q.get("reconstruction_name")]
+    recon_names = set(q.get("reconstruction_name") for q in recon_questions)
+    
     print(f"\n{'='*60}")
     print("✅ EXTRACTION COMPLETE!")
     print(f"{'='*60}")
@@ -74,6 +81,7 @@ def main():
     print(f"   Total questions: {len(all_questions)}")
     print(f"   📸 With images: {with_images}")
     print(f"   📸 Total image URLs: {total_images}")
+    print(f"   📋 Reconstrucciones: {len(recon_questions)} questions in {len(recon_names)} exams")
     print(f"\nNext steps:")
     print(f"  1. ✅ Questions extracted: {output_file}")
     print(f"  2. 🔄 Run merge_topics.py to fill in missing topics")

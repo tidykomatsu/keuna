@@ -1,7 +1,7 @@
 """
 Database operations for EUNACOM Quiz App - PostgreSQL/Supabase Version
 All data persistence with automatic performance tracking
-WITH IMAGE SUPPORT
+WITH IMAGE SUPPORT AND RECONSTRUCCIONES
 """
 
 import psycopg2
@@ -67,15 +67,18 @@ def insert_questions_from_json(questions: list[dict], batch_size: int = 100) -> 
     for i, question in enumerate(questions):
         try:
             images = question.get("images", [])
+            reconstruction_name = question.get("reconstruction_name")
+            reconstruction_order = question.get("reconstruction_order")
 
             cursor.execute(
                 """
                 INSERT INTO questions (
                     question_id, question_number, topic, question_text,
                     answer_options, correct_answer, explanation,
-                    source_file, source_type, images
+                    source_file, source_type, images,
+                    reconstruction_name, reconstruction_order
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (question_id) DO UPDATE SET
                     question_number = EXCLUDED.question_number,
                     topic = EXCLUDED.topic,
@@ -86,6 +89,8 @@ def insert_questions_from_json(questions: list[dict], batch_size: int = 100) -> 
                     source_file = EXCLUDED.source_file,
                     source_type = EXCLUDED.source_type,
                     images = EXCLUDED.images,
+                    reconstruction_name = EXCLUDED.reconstruction_name,
+                    reconstruction_order = EXCLUDED.reconstruction_order,
                     updated_at = CURRENT_TIMESTAMP
                 """,
                 (
@@ -99,6 +104,8 @@ def insert_questions_from_json(questions: list[dict], batch_size: int = 100) -> 
                     question.get("source_file"),
                     question.get("source_type"),
                     Json(images),
+                    reconstruction_name,
+                    reconstruction_order,
                 ),
             )
             success_count += 1
@@ -142,7 +149,9 @@ def get_all_questions() -> pl.DataFrame:
             explanation,
             source_file,
             source_type,
-            images
+            images,
+            reconstruction_name,
+            reconstruction_order
         FROM questions
         ORDER BY question_number
     """
@@ -169,6 +178,8 @@ def get_all_questions() -> pl.DataFrame:
                 "source_file": pl.Utf8,
                 "source_type": pl.Utf8,
                 "images": pl.List(pl.Utf8),
+                "reconstruction_name": pl.Utf8,
+                "reconstruction_order": pl.Int64,
             }
         )
 
@@ -257,6 +268,127 @@ def get_random_question_with_images() -> dict | None:
     conn.close()
 
     return dict(row) if row else None
+
+
+# ============================================================================
+# RECONSTRUCCIONES
+# ============================================================================
+
+
+def get_reconstruction_names() -> list[str]:
+    """Get list of all reconstruction names (sorted)"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT DISTINCT reconstruction_name 
+        FROM questions 
+        WHERE reconstruction_name IS NOT NULL
+        ORDER BY reconstruction_name
+        """
+    )
+
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    return [row[0] for row in rows]
+
+
+def get_reconstruction_questions(reconstruction_name: str) -> pl.DataFrame:
+    """
+    Get all questions for a specific reconstruction, ordered by reconstruction_order.
+    This is the key function for displaying reconstructions in exact exam order.
+    """
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+    cursor.execute(
+        """
+        SELECT
+            question_id,
+            question_number,
+            topic,
+            question_text,
+            answer_options,
+            correct_answer,
+            explanation,
+            source_file,
+            source_type,
+            images,
+            reconstruction_name,
+            reconstruction_order
+        FROM questions
+        WHERE reconstruction_name = %s
+        ORDER BY reconstruction_order ASC
+        """,
+        (reconstruction_name,),
+    )
+
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    if not rows:
+        return pl.DataFrame()
+
+    return pl.DataFrame(rows)
+
+
+def get_reconstruction_stats(username: str, reconstruction_name: str) -> dict:
+    """Get user's progress on a specific reconstruction"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # Total questions in reconstruction
+    cursor.execute(
+        """
+        SELECT COUNT(*) FROM questions 
+        WHERE reconstruction_name = %s
+        """,
+        (reconstruction_name,),
+    )
+    total = cursor.fetchone()[0]
+
+    # Questions answered by user
+    cursor.execute(
+        """
+        SELECT COUNT(DISTINCT ua.question_id), 
+               SUM(CASE WHEN ua.is_correct THEN 1 ELSE 0 END)
+        FROM user_answers ua
+        JOIN questions q ON ua.question_id = q.question_id
+        WHERE ua.username = %s AND q.reconstruction_name = %s
+        """,
+        (username, reconstruction_name),
+    )
+    row = cursor.fetchone()
+    answered = row[0] or 0
+    correct = row[1] or 0
+
+    cursor.close()
+    conn.close()
+
+    return {
+        "total": total,
+        "answered": answered,
+        "correct": correct,
+        "accuracy": (correct / answered * 100) if answered > 0 else 0,
+        "progress": (answered / total * 100) if total > 0 else 0,
+    }
+
+
+def get_all_reconstructions_stats(username: str) -> list[dict]:
+    """Get stats for all reconstructions for a user"""
+    reconstruction_names = get_reconstruction_names()
+    
+    stats = []
+    for name in reconstruction_names:
+        stat = get_reconstruction_stats(username, name)
+        stat["name"] = name
+        stats.append(stat)
+    
+    return stats
 
 
 # ============================================================================

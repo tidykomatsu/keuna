@@ -1,7 +1,7 @@
 """
 Script to import questions from JSON file into Supabase
 Run this once to populate your database
-WITH IMAGE SUPPORT AND STRICT VALIDATION
+WITH IMAGE SUPPORT, STRICT VALIDATION, AND RECONSTRUCCIONES
 """
 
 import json
@@ -15,9 +15,9 @@ load_dotenv()
 # ============================================================================
 # TEST MODE - Set to True to import only questions with images
 # ============================================================================
-TEST_MODE = True
+TEST_MODE = False
 TEST_LIMIT = 200
-TEST_IMAGES_ONLY = True  # When TEST_MODE=True, only import questions with images
+TEST_IMAGES_ONLY = False  # When TEST_MODE=True, only import questions with images
 
 # Add parent directory to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -37,6 +37,14 @@ REQUIRED_FIELDS = [
     "answer_options",
     "correct_answer",
     "explanation",
+]
+
+OPTIONAL_FIELDS = [
+    "images",
+    "source_file",
+    "source_type",
+    "reconstruction_name",
+    "reconstruction_order",
 ]
 
 ANSWER_OPTION_REQUIRED = ["letter", "text", "is_correct"]
@@ -102,6 +110,16 @@ def validate_question_structure(question: dict) -> tuple[bool, list[str]]:
     images = question.get("images", [])
     if not isinstance(images, list):
         issues.append(f"[{q_id}] 'images' must be a list")
+
+    # Reconstruction fields validation
+    recon_name = question.get("reconstruction_name")
+    recon_order = question.get("reconstruction_order")
+    
+    if recon_name is not None and not isinstance(recon_name, str):
+        issues.append(f"[{q_id}] reconstruction_name must be string or None")
+    
+    if recon_order is not None and not isinstance(recon_order, int):
+        issues.append(f"[{q_id}] reconstruction_order must be int or None")
 
     return len(issues) == 0, issues
 
@@ -188,6 +206,7 @@ def import_questions_from_file(filepath: str):
     valid_questions = []
     all_issues = []
     with_images_count = 0
+    recon_count = 0
 
     for i, q in enumerate(questions, 1):
         is_valid, issues = validate_question_structure(q)
@@ -200,12 +219,19 @@ def import_questions_from_file(filepath: str):
                     print(f"  ⚠️  {iss}")
             continue
 
-        # Ensure images field exists
+        # Ensure optional fields exist
         if "images" not in q:
             q["images"] = []
+        if "reconstruction_name" not in q:
+            q["reconstruction_name"] = None
+        if "reconstruction_order" not in q:
+            q["reconstruction_order"] = None
 
         if q["images"]:
             with_images_count += 1
+        
+        if q["reconstruction_name"]:
+            recon_count += 1
 
         valid_questions.append(q)
 
@@ -215,6 +241,7 @@ def import_questions_from_file(filepath: str):
     print(f"✅ Valid questions: {len(valid_questions)}")
     print(f"❌ Invalid questions: {len(questions) - len(valid_questions)}")
     print(f"📸 Questions with images: {with_images_count}")
+    print(f"📋 Reconstruction questions: {recon_count}")
     
     if all_issues:
         # Group issues by type
@@ -263,6 +290,18 @@ def import_questions_from_file(filepath: str):
 
     for topic, count in sorted(topics.items(), key=lambda x: -x[1]):
         print(f"   {topic}: {count}")
+
+    # Show reconstruction distribution
+    recon_names = {}
+    for q in valid_questions:
+        if q.get("reconstruction_name"):
+            name = q["reconstruction_name"]
+            recon_names[name] = recon_names.get(name, 0) + 1
+
+    if recon_names:
+        print("\n📋 Reconstrucciones loaded:")
+        for name, count in sorted(recon_names.items()):
+            print(f"   {name}: {count} questions")
 
     print(f"\n{'='*60}")
     print("✅ IMPORT COMPLETE")
