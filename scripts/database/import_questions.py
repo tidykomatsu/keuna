@@ -2,11 +2,18 @@
 Script to import questions from JSON file into Supabase
 Run this once to populate your database
 WITH IMAGE SUPPORT, STRICT VALIDATION, AND RECONSTRUCCIONES
+
+Usage:
+    python import_questions.py                      # Default: insert-only mode
+    python import_questions.py --mode insert-only   # Skip existing questions
+    python import_questions.py --mode upsert        # Update existing questions
+    python import_questions.py path/to/file.json   # Custom file path
 """
 
 import json
 import sys
 import os
+import argparse
 
 from dotenv import load_dotenv
 
@@ -22,7 +29,7 @@ TEST_IMAGES_ONLY = False  # When TEST_MODE=True, only import questions with imag
 # Add parent directory to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.database import insert_questions_from_json, get_question_count
+from src.database import insert_questions_from_json, get_question_count, get_existing_question_ids
 
 
 # ============================================================================
@@ -162,11 +169,18 @@ def assert_no_duplicate_ids(questions: list[dict]):
 # ============================================================================
 
 
-def import_questions_from_file(filepath: str):
-    """Import questions from JSON file with strict validation"""
+def import_questions_from_file(filepath: str, mode: str = "insert-only"):
+    """
+    Import questions from JSON file with strict validation.
+    
+    Args:
+        filepath: Path to JSON file
+        mode: "insert-only" (skip existing) or "upsert" (update existing)
+    """
 
     print(f"\n{'='*60}")
     print(f"📂 Loading questions from: {filepath}")
+    print(f"📋 Mode: {mode.upper()}")
     print(f"{'='*60}")
 
     # File existence check
@@ -182,7 +196,7 @@ def import_questions_from_file(filepath: str):
     assert isinstance(questions, list), f"Expected list, got {type(questions)}"
     assert len(questions) > 0, "Empty questions list"
 
-    print(f"📊 Found {len(questions)} questions")
+    print(f"📊 Found {len(questions)} questions in file")
 
     if TEST_MODE:
         if TEST_IMAGES_ONLY:
@@ -194,9 +208,33 @@ def import_questions_from_file(filepath: str):
     # ============================================================================
     # CRITICAL: Check for duplicate IDs FIRST
     # ============================================================================
-    print("🔍 Checking for duplicate IDs...")
+    print("🔍 Checking for duplicate IDs in file...")
     assert_no_duplicate_ids(questions)
-    print("✅ No duplicate IDs found")
+    print("✅ No duplicate IDs found in file")
+
+    # ============================================================================
+    # INSERT-ONLY MODE: Filter out existing questions
+    # ============================================================================
+    skipped_count = 0
+    
+    if mode == "insert-only":
+        print("\n🔍 Checking which questions already exist in database...")
+        existing_ids = get_existing_question_ids()
+        print(f"   Found {len(existing_ids)} existing questions in database")
+        
+        original_count = len(questions)
+        questions = [q for q in questions if q.get("question_id") not in existing_ids]
+        skipped_count = original_count - len(questions)
+        
+        print(f"   ⏭️  Skipping {skipped_count} existing questions")
+        print(f"   ✨ {len(questions)} NEW questions to import")
+        
+        if len(questions) == 0:
+            print(f"\n{'='*60}")
+            print("✅ NO NEW QUESTIONS TO IMPORT")
+            print(f"   All {original_count} questions already exist in database")
+            print(f"{'='*60}\n")
+            return
 
     # ============================================================================
     # Validate and filter
@@ -243,6 +281,9 @@ def import_questions_from_file(filepath: str):
     print(f"📸 Questions with images: {with_images_count}")
     print(f"📋 Reconstruction questions: {recon_count}")
     
+    if skipped_count > 0:
+        print(f"⏭️  Skipped (already exist): {skipped_count}")
+    
     if all_issues:
         # Group issues by type
         issue_types = {}
@@ -260,7 +301,10 @@ def import_questions_from_file(filepath: str):
             print(f"   {issue_type}: {count}")
 
     if len(valid_questions) == 0:
-        raise AssertionError("No valid questions to import!")
+        print(f"\n{'='*60}")
+        print("✅ NO VALID NEW QUESTIONS TO IMPORT")
+        print(f"{'='*60}\n")
+        return
 
     # ============================================================================
     # Insert into database
@@ -269,7 +313,9 @@ def import_questions_from_file(filepath: str):
     print("💾 Inserting into database...")
     print(f"{'='*60}")
     
-    success_count, error_count = insert_questions_from_json(valid_questions)
+    # Use upsert=False for insert-only mode
+    use_upsert = (mode == "upsert")
+    success_count, error_count = insert_questions_from_json(valid_questions, upsert=use_upsert)
 
     print(f"\n✅ Successfully inserted: {success_count}")
     print(f"❌ Database errors: {error_count}")
@@ -279,7 +325,8 @@ def import_questions_from_file(filepath: str):
     print(f"\n📊 Total questions in database: {total_in_db}")
 
     # Post-import assertion
-    assert success_count > 0, "No questions were imported successfully!"
+    if success_count == 0 and len(valid_questions) > 0:
+        print("⚠️ Warning: No questions were imported!")
 
     # Show topic distribution
     print("\n📚 Topics loaded:")
@@ -320,20 +367,46 @@ def get_default_input_path() -> str:
 
 
 if __name__ == "__main__":
-    default_file = get_default_input_path()
-    filepath = default_file
+    parser = argparse.ArgumentParser(
+        description="Import questions from JSON file into Supabase database",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python import_questions.py                           # Insert only new questions
+  python import_questions.py --mode upsert             # Update existing + insert new
+  python import_questions.py --mode insert-only        # Skip existing (default)
+  python import_questions.py path/to/questions.json    # Custom file path
 
-    if len(sys.argv) > 1:
-        filepath = sys.argv[1]
+Pipeline:
+  1. Run extract_all.py     → extracted.json
+  2. Run merge_topics.py    → questions_ready.json
+  3. Run import_questions.py (this script)
+        """
+    )
+    
+    parser.add_argument(
+        "filepath",
+        nargs="?",
+        default=None,
+        help="Path to questions JSON file (default: data/processed/questions_ready.json)"
+    )
+    
+    parser.add_argument(
+        "--mode",
+        choices=["insert-only", "upsert"],
+        default="insert-only",
+        help="Import mode: 'insert-only' skips existing questions (default), 'upsert' updates existing"
+    )
+    
+    args = parser.parse_args()
+    
+    # Get filepath
+    filepath = args.filepath if args.filepath else get_default_input_path()
 
     if not os.path.exists(filepath):
         print(f"❌ File not found: {filepath}")
-        print(f"\nUsage: python {sys.argv[0]} [path_to_questions.json]")
-        print(f"Default file: {default_file}")
-        print(f"\nPipeline:")
-        print(f"  1. Run extract_all.py     → extracted.json")
-        print(f"  2. Run merge_topics.py    → questions_ready.json")
-        print(f"  3. Run import_questions.py (this script)")
+        print(f"\nUsage: python {sys.argv[0]} [path_to_questions.json] [--mode insert-only|upsert]")
+        print(f"Default file: {get_default_input_path()}")
         sys.exit(1)
 
-    import_questions_from_file(filepath)
+    import_questions_from_file(filepath, mode=args.mode)

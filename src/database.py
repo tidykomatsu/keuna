@@ -52,10 +52,17 @@ def init_database():
 # ============================================================================
 
 
-def insert_questions_from_json(questions: list[dict], batch_size: int = 100) -> tuple[int, int]:
+def insert_questions_from_json(questions: list[dict], batch_size: int = 100, upsert: bool = True) -> tuple[int, int]:
     """
     Insert questions from JSON structure into database in batches.
-    Returns (success_count, error_count)
+    
+    Args:
+        questions: List of question dicts
+        batch_size: Commit every N questions
+        upsert: If True, update existing questions. If False, skip existing (INSERT only).
+        
+    Returns:
+        (success_count, error_count)
     """
     conn = get_connection()
     cursor = conn.cursor()
@@ -70,44 +77,74 @@ def insert_questions_from_json(questions: list[dict], batch_size: int = 100) -> 
             reconstruction_name = question.get("reconstruction_name")
             reconstruction_order = question.get("reconstruction_order")
 
-            cursor.execute(
-                """
-                INSERT INTO questions (
-                    question_id, question_number, topic, question_text,
-                    answer_options, correct_answer, explanation,
-                    source_file, source_type, images,
-                    reconstruction_name, reconstruction_order
+            if upsert:
+                # UPSERT: Insert or update existing
+                cursor.execute(
+                    """
+                    INSERT INTO questions (
+                        question_id, question_number, topic, question_text,
+                        answer_options, correct_answer, explanation,
+                        source_file, source_type, images,
+                        reconstruction_name, reconstruction_order
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (question_id) DO UPDATE SET
+                        question_number = EXCLUDED.question_number,
+                        topic = EXCLUDED.topic,
+                        question_text = EXCLUDED.question_text,
+                        answer_options = EXCLUDED.answer_options,
+                        correct_answer = EXCLUDED.correct_answer,
+                        explanation = EXCLUDED.explanation,
+                        source_file = EXCLUDED.source_file,
+                        source_type = EXCLUDED.source_type,
+                        images = EXCLUDED.images,
+                        reconstruction_name = EXCLUDED.reconstruction_name,
+                        reconstruction_order = EXCLUDED.reconstruction_order,
+                        updated_at = CURRENT_TIMESTAMP
+                    """,
+                    (
+                        question["question_id"],
+                        question["question_number"],
+                        question["topic"],
+                        question["question_text"],
+                        Json(question["answer_options"]),
+                        question["correct_answer"],
+                        question["explanation"],
+                        question.get("source_file"),
+                        question.get("source_type"),
+                        Json(images),
+                        reconstruction_name,
+                        reconstruction_order,
+                    ),
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (question_id) DO UPDATE SET
-                    question_number = EXCLUDED.question_number,
-                    topic = EXCLUDED.topic,
-                    question_text = EXCLUDED.question_text,
-                    answer_options = EXCLUDED.answer_options,
-                    correct_answer = EXCLUDED.correct_answer,
-                    explanation = EXCLUDED.explanation,
-                    source_file = EXCLUDED.source_file,
-                    source_type = EXCLUDED.source_type,
-                    images = EXCLUDED.images,
-                    reconstruction_name = EXCLUDED.reconstruction_name,
-                    reconstruction_order = EXCLUDED.reconstruction_order,
-                    updated_at = CURRENT_TIMESTAMP
-                """,
-                (
-                    question["question_id"],
-                    question["question_number"],
-                    question["topic"],
-                    question["question_text"],
-                    Json(question["answer_options"]),
-                    question["correct_answer"],
-                    question["explanation"],
-                    question.get("source_file"),
-                    question.get("source_type"),
-                    Json(images),
-                    reconstruction_name,
-                    reconstruction_order,
-                ),
-            )
+            else:
+                # INSERT ONLY: Skip if exists (ON CONFLICT DO NOTHING)
+                cursor.execute(
+                    """
+                    INSERT INTO questions (
+                        question_id, question_number, topic, question_text,
+                        answer_options, correct_answer, explanation,
+                        source_file, source_type, images,
+                        reconstruction_name, reconstruction_order
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (question_id) DO NOTHING
+                    """,
+                    (
+                        question["question_id"],
+                        question["question_number"],
+                        question["topic"],
+                        question["question_text"],
+                        Json(question["answer_options"]),
+                        question["correct_answer"],
+                        question["explanation"],
+                        question.get("source_file"),
+                        question.get("source_type"),
+                        Json(images),
+                        reconstruction_name,
+                        reconstruction_order,
+                    ),
+                )
             success_count += 1
 
             # Commit and print progress every batch_size questions
@@ -233,6 +270,20 @@ def get_question_count() -> int:
     conn.close()
 
     return count
+
+
+def get_existing_question_ids() -> set[str]:
+    """Get set of all question IDs currently in database"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT question_id FROM questions")
+    rows = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return {row[0] for row in rows}
 
 
 def get_questions_with_images_count() -> int:
