@@ -1,7 +1,22 @@
 """
-Merge topics from historical classifications into fresh extraction.
-Replaces the Gemini API classification step.
-Also migrates images from Moodle to Supabase Storage.
+Standalone topic enrichment and image migration script.
+
+NOTE: Topic enrichment is now integrated into extract_all.py, which outputs
+questions_ready.json directly. This script is kept for:
+1. Standalone topic re-enrichment if needed
+2. Image migration from Moodle to Supabase Storage (not in extract_all.py)
+3. Manual topic overrides via manual_topics.csv
+
+For normal extraction workflow, just run extract_all.py which handles:
+- Extraction from all sources
+- Merge and deduplication
+- Topic enrichment from historical data
+- Output to questions_ready.json
+
+Use this script when you need to:
+- Migrate images to Supabase (requires MOODLE_SESSION)
+- Apply manual topic overrides
+- Re-run topic enrichment independently
 
 Input:
     - extracted.json (fresh extraction, topics may be empty)

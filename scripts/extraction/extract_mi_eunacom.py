@@ -228,7 +228,11 @@ def extract_all_mi_eunacom() -> list[dict]:
     raw_root = get_raw_data_root()
     raw_dir = raw_root / "mi_eunacom"
 
-    html_files = sorted(list(raw_dir.glob("*.html")) + list(raw_dir.glob("*.htm")))
+    # Exclude files inside Reconstrucciones folder if it exists
+    html_files = sorted([
+        f for f in (list(raw_dir.glob("*.html")) + list(raw_dir.glob("*.htm")))
+        if "Reconstrucciones" not in str(f)
+    ])
 
     print(f"\n{'='*60}")
     print("EXTRACTING: MI_EUNACOM (WITH IMAGES)")

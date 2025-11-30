@@ -1,12 +1,16 @@
 """
 Migrate question images from Moodle to Supabase Storage.
 Downloads images using authenticated session and uploads to Supabase.
+
+This script reads questions_ready.json, migrates images, and overwrites
+the same file (after creating a backup at questions_ready_pre_migration.json).
 """
 
 import json
 import logging
 import os
 import re
+import shutil
 import time
 from pathlib import Path
 from urllib.parse import urlparse
@@ -34,8 +38,10 @@ BUCKET_NAME = "question-images"
 # Moodle session cookie - SET THIS BEFORE RUNNING
 MOODLE_SESSION_COOKIE = os.getenv("MOODLE_SESSION", "")
 
-QUESTIONS_FILE = Path(os.getenv("EUNACOM_PROCESSED_DATA")) / "questions_ready.json"
-OUTPUT_FILE = Path(os.getenv("EUNACOM_PROCESSED_DATA")) / "questions_ready_migrated.json"
+PROCESSED_DIR = Path(os.getenv("EUNACOM_PROCESSED_DATA"))
+QUESTIONS_FILE = PROCESSED_DIR / "questions_ready.json"
+BACKUP_FILE = PROCESSED_DIR / "questions_ready_pre_migration.json"
+OUTPUT_FILE = QUESTIONS_FILE  # Overwrite input after backup
 
 
 # ============================================================================
@@ -114,6 +120,11 @@ def migrate_images(test_mode: bool = False, limit: int = 5):
     """Migrate all images from Moodle to Supabase"""
 
     assert MOODLE_SESSION_COOKIE, "MOODLE_SESSION cookie not set. Get it from browser DevTools."
+
+    # Create backup before modifying
+    if QUESTIONS_FILE.exists():
+        shutil.copy(QUESTIONS_FILE, BACKUP_FILE)
+        log.info(f"Backup created: {BACKUP_FILE}")
 
     # Load questions
     log.info(f"Loading questions from {QUESTIONS_FILE}")

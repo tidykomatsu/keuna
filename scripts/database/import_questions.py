@@ -378,8 +378,8 @@ Examples:
   python import_questions.py path/to/questions.json    # Custom file path
 
 Pipeline:
-  1. Run extract_all.py     → extracted.json
-  2. Run merge_topics.py    → questions_ready.json
+  1. Run extract_all.py                      → questions_ready.json
+  2. Run migrate_images_to_supabase.py --full → updates questions_ready.json (optional)
   3. Run import_questions.py (this script)
         """
     )

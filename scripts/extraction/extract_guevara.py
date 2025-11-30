@@ -155,7 +155,11 @@ def extract_all_guevara() -> list[dict]:
     raw_root = get_raw_data_root()
     raw_dir = raw_root / "guevara"
 
-    html_files = sorted(list(raw_dir.rglob("*.html")) + list(raw_dir.rglob("*.htm")))
+    # Exclude files inside Reconstrucciones folder (handled separately by extract_reconstrucciones.py)
+    html_files = sorted([
+        f for f in (list(raw_dir.rglob("*.html")) + list(raw_dir.rglob("*.htm")))
+        if "Reconstrucciones" not in str(f)
+    ])
 
     print(f"\n{'='*60}")
     print("EXTRACTING: GUEVARA (WITH IMAGES)")
