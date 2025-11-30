@@ -1,10 +1,17 @@
 """
-EUNACOM Quiz Application - Home Page (SIMPLIFIED)
+EUNACOM Quiz Application - Home Page
+With cookie-based session persistence
 """
 
 import streamlit as st
 
-from src.auth import show_login_page, show_logout_button
+from src.auth import (
+    show_login_page,
+    show_logout_button,
+    restore_session_from_cookie,
+    get_cookie_manager,
+    process_pending_login,
+)
 from src.database import init_database, get_user_stats
 from src.modern_ui import inject_modern_css
 
@@ -28,12 +35,17 @@ def main():
 
     init_database()
 
-    # Auth check
-    if "authenticated" not in st.session_state:
-        st.session_state.authenticated = False
+    # Initialize cookie manager FIRST (singleton for this page run)
+    get_cookie_manager()
+
+    # Process any pending login from button click
+    process_pending_login()
+
+    # Try to restore session from cookie
+    restore_session_from_cookie()
 
     # Hide sidebar completely before authentication
-    if not st.session_state.authenticated:
+    if not st.session_state.get("authenticated"):
         st.markdown(
             """
             <style>
@@ -69,7 +81,7 @@ def main():
     # Authenticated home page
     st.title("🏥 EUNACOM Quiz")
 
-    st.markdown(f"### Bienvenida {st.session_state.name} 👋")
+    st.markdown(f"### Bienvenid@ {st.session_state.name} 👋")
 
     # Quick stats
     stats = get_user_stats(st.session_state.username)
