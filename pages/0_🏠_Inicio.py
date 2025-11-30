@@ -1,17 +1,10 @@
 """
 EUNACOM Quiz Application - Home Page
-With cookie-based session persistence
 """
 
 import streamlit as st
 
-from src.auth import (
-    show_login_page,
-    show_logout_button,
-    restore_session_from_cookie,
-    get_cookie_manager,
-    process_pending_login,
-)
+from src.auth import show_login_page, show_logout_button
 from src.database import init_database, get_user_stats
 from src.modern_ui import inject_modern_css
 
@@ -35,26 +28,13 @@ def main():
 
     init_database()
 
-    # Initialize cookie manager FIRST (singleton for this page run)
-    get_cookie_manager()
-
-    # Process any pending login from button click
-    process_pending_login()
-
-    # Try to restore session from cookie
-    restore_session_from_cookie()
-
-    # Hide sidebar completely before authentication
+    # Hide sidebar before authentication
     if not st.session_state.get("authenticated"):
         st.markdown(
             """
             <style>
-                [data-testid="collapsedControl"] {
-                    display: none
-                }
-                section[data-testid="stSidebar"] {
-                    display: none;
-                }
+                [data-testid="collapsedControl"] { display: none }
+                section[data-testid="stSidebar"] { display: none; }
             </style>
             """,
             unsafe_allow_html=True
@@ -62,16 +42,12 @@ def main():
         show_login_page()
         return
 
-    # Show sidebar after authentication + inject modern CSS
+    # Show sidebar after authentication
     st.markdown(
         """
         <style>
-            [data-testid="collapsedControl"] {
-                display: block
-            }
-            section[data-testid="stSidebar"] {
-                display: block;
-            }
+            [data-testid="collapsedControl"] { display: block }
+            section[data-testid="stSidebar"] { display: block; }
         </style>
         """,
         unsafe_allow_html=True
@@ -80,7 +56,6 @@ def main():
 
     # Authenticated home page
     st.title("🏥 EUNACOM Quiz")
-
     st.markdown(f"### Bienvenid@ {st.session_state.name} 👋")
 
     # Quick stats
@@ -94,7 +69,7 @@ def main():
     with col3:
         st.metric("🎯 Precisión", f"{stats['accuracy']:.1f}%")
 
-    # Navigation - Core Practice Modes Only
+    # Navigation
     st.markdown("### 📝 Modos de Práctica")
 
     col1, col2 = st.columns(2)
@@ -107,12 +82,11 @@ def main():
 
     st.markdown("")
 
-    # Stats
     st.markdown("### 📊 Análisis")
     if st.button("📊 Ver Estadísticas", use_container_width=True):
         st.switch_page("pages/3_📊_Estadisticas.py")
 
-    # Sidebar with logout only
+    # Sidebar
     with st.sidebar:
         show_logout_button()
 

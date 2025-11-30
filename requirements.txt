@@ -3,4 +3,3 @@ polars
 beautifulsoup4
 psycopg2-binary
 python-dotenv
-extra-streamlit-components
