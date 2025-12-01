@@ -11,12 +11,17 @@ from datetime import datetime, timedelta
 # Configuration
 # ============================================================================
 
-# Users in display order: Andrea, German, Bruno, Maria
+# Users in display order: Andrea, German, Bruno, Seba, Naty, Dani, Miguel, Jose, Libre
 PROFILES = {
     'andrea': 'Andrea',
     'german': 'German',
     'bruno': 'Bruno',
-    'maria': 'Maria',
+    'seba': 'Seba',
+    'naty': 'Naty',
+    'dani': 'Dani',
+    'miguel': 'Miguel',
+    'jose': 'Jose',
+    'maria': 'Libre',
 }
 
 # Cookie settings
@@ -167,26 +172,35 @@ def show_login_page():
         st.markdown('<hr class="login-divider">', unsafe_allow_html=True)
         st.markdown('<p class="profile-header">👤 Selecciona tu Perfil</p>', unsafe_allow_html=True)
 
-    # Profile buttons - 2x2 grid
+    # Profile buttons - Vertical list (mobile-friendly)
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        row1_col1, row1_col2 = st.columns(2)
-        with row1_col1:
-            if st.button("👤 Andrea", use_container_width=True, key="btn_andrea"):
-                login_user("andrea")
-        with row1_col2:
-            if st.button("👤 German", use_container_width=True, key="btn_german"):
-                login_user("german")
+        if st.button("👤 Andrea", use_container_width=True, key="btn_andrea"):
+            login_user("andrea")
 
-        st.markdown("")
+        if st.button("👤 German", use_container_width=True, key="btn_german"):
+            login_user("german")
 
-        row2_col1, row2_col2 = st.columns(2)
-        with row2_col1:
-            if st.button("👤 Bruno", use_container_width=True, key="btn_bruno"):
-                login_user("bruno")
-        with row2_col2:
-            if st.button("👤 Maria", use_container_width=True, key="btn_maria"):
-                login_user("maria")
+        if st.button("👤 Bruno", use_container_width=True, key="btn_bruno"):
+            login_user("bruno")
+
+        if st.button("👤 Seba", use_container_width=True, key="btn_seba"):
+            login_user("seba")
+
+        if st.button("👤 Naty", use_container_width=True, key="btn_naty"):
+            login_user("naty")
+
+        if st.button("👤 Dani", use_container_width=True, key="btn_dani"):
+            login_user("dani")
+
+        if st.button("👤 Miguel", use_container_width=True, key="btn_miguel"):
+            login_user("miguel")
+
+        if st.button("👤 Jose", use_container_width=True, key="btn_jose"):
+            login_user("jose")
+
+        if st.button("👤 Libre", use_container_width=True, key="btn_maria"):
+            login_user("maria")
 
 
 def login_user(username: str):

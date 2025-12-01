@@ -220,7 +220,7 @@ def get_all_questions() -> pl.DataFrame:
             }
         )
 
-    return pl.DataFrame(rows)
+    return pl.DataFrame(rows, infer_schema_length=10000)
 
 
 def get_questions_by_topic(topic: str) -> pl.DataFrame:
