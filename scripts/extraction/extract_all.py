@@ -184,10 +184,13 @@ def main():
     print(f"{'='*60}")
 
     all_questions = merge_and_deduplicate([
+        reconstrucciones_questions,
         mi_eunacom_questions,
         mi_eunacom_topics_questions,
         guevara_questions,
-        reconstrucciones_questions,
+
+
+
     ])
 
     print_extraction_summary(all_questions, "MERGED (ALL SOURCES)")
@@ -232,9 +235,10 @@ def main():
     print(f"   With images: {with_images}")
     print(f"   Total image URLs: {total_images}")
     print(f"   Reconstrucciones: {len(recon_questions)} questions in {len(recon_names)} exams")
-    print(f"\nNext step:")
-    print(f"   python scripts/database/import_questions.py")
-    print(f"\nNote: Run merge_topics.py separately if you need image migration to Supabase.")
+    print(f"\nPipeline:")
+    print(f"   1. (done) extract_all.py             -> questions_ready.json")
+    print(f"   2. migrate_images_to_supabase.py     -> image_mappings.json (optional)")
+    print(f"   3. import_questions.py               -> merges + inserts to DB")
 
 
 if __name__ == "__main__":

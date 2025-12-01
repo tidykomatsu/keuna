@@ -1,16 +1,22 @@
 """
 Migrate question images from Moodle to Supabase Storage.
-Downloads images using authenticated session and uploads to Supabase.
 
-This script reads questions_ready.json, migrates images, and overwrites
-the same file (after creating a backup at questions_ready_pre_migration.json).
+INCREMENTAL MIGRATION:
+- Maintains image_mappings.json: {original_url -> supabase_url}
+- Only downloads/uploads images NOT already in mappings
+- Never modifies questions_ready.json (import_questions.py handles merging)
+- Saves progress after each successful upload (resume-safe)
+
+Usage:
+    python migrate_images_to_supabase.py --test       # Test with 5 questions
+    python migrate_images_to_supabase.py --full       # Process all pending images
+    python migrate_images_to_supabase.py --status     # Show migration status
 """
 
 import json
 import logging
 import os
 import re
-import shutil
 import time
 from pathlib import Path
 from urllib.parse import urlparse
@@ -20,6 +26,7 @@ from dotenv import load_dotenv
 from supabase import create_client
 
 load_dotenv()
+
 
 # ============================================================================
 # Configuration
@@ -35,13 +42,41 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 BUCKET_NAME = "question-images"
 
-# Moodle session cookie - SET THIS BEFORE RUNNING
 MOODLE_SESSION_COOKIE = os.getenv("MOODLE_SESSION", "")
 
 PROCESSED_DIR = Path(os.getenv("EUNACOM_PROCESSED_DATA"))
 QUESTIONS_FILE = PROCESSED_DIR / "questions_ready.json"
-BACKUP_FILE = PROCESSED_DIR / "questions_ready_pre_migration.json"
-OUTPUT_FILE = QUESTIONS_FILE  # Overwrite input after backup
+MAPPINGS_FILE = PROCESSED_DIR / "image_mappings.json"
+
+
+# ============================================================================
+# Mappings Management
+# ============================================================================
+
+def load_mappings() -> dict[str, str]:
+    """Load existing image mappings from file"""
+    if not MAPPINGS_FILE.exists():
+        return {}
+
+    with open(MAPPINGS_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_mappings(mappings: dict[str, str]):
+    """Save mappings to file (atomic write)"""
+    temp_file = MAPPINGS_FILE.with_suffix(".tmp")
+    with open(temp_file, "w", encoding="utf-8") as f:
+        json.dump(mappings, f, ensure_ascii=False, indent=2)
+    temp_file.replace(MAPPINGS_FILE)
+
+
+def is_already_migrated(url: str, mappings: dict[str, str]) -> bool:
+    """Check if URL is already in mappings or is already a Supabase URL"""
+    if not url:
+        return True
+    if "supabase" in url:
+        return True
+    return url in mappings
 
 
 # ============================================================================
@@ -98,7 +133,7 @@ def generate_storage_path(question_id: str, image_index: int, original_url: str)
 def upload_to_supabase(client, file_path: str, image_data: bytes, content_type: str = "image/jpeg") -> str | None:
     """Upload image to Supabase Storage and return public URL"""
     try:
-        result = client.storage.from_(BUCKET_NAME).upload(
+        client.storage.from_(BUCKET_NAME).upload(
             file_path,
             image_data,
             {"content-type": content_type, "upsert": "true"}
@@ -113,23 +148,71 @@ def upload_to_supabase(client, file_path: str, image_data: bytes, content_type: 
 
 
 # ============================================================================
+# Status Report
+# ============================================================================
+
+def show_status():
+    """Show migration status without modifying anything"""
+    log.info(f"Loading questions from {QUESTIONS_FILE}")
+
+    assert QUESTIONS_FILE.exists(), f"Questions file not found: {QUESTIONS_FILE}"
+
+    with open(QUESTIONS_FILE, "r", encoding="utf-8") as f:
+        questions = json.load(f)
+
+    mappings = load_mappings()
+
+    # Collect all image URLs
+    all_urls = []
+    for q in questions:
+        for url in q.get("images", []):
+            if url:
+                all_urls.append(url)
+
+    # Categorize
+    already_supabase = [u for u in all_urls if "supabase" in u]
+    in_mappings = [u for u in all_urls if u in mappings and "supabase" not in u]
+    pending = [u for u in all_urls if not is_already_migrated(u, mappings)]
+
+    print(f"\n{'='*60}")
+    print("IMAGE MIGRATION STATUS")
+    print(f"{'='*60}")
+    print(f"Questions file: {QUESTIONS_FILE}")
+    print(f"Mappings file:  {MAPPINGS_FILE}")
+    print(f"\nTotal images in questions: {len(all_urls)}")
+    print(f"  Already Supabase URLs:   {len(already_supabase)}")
+    print(f"  In mappings file:        {len(in_mappings)}")
+    print(f"  Pending migration:       {len(pending)}")
+    print(f"\nMappings file entries:     {len(mappings)}")
+    print(f"{'='*60}\n")
+
+    if pending:
+        print(f"Sample pending URLs (first 5):")
+        for url in pending[:5]:
+            print(f"  {url[:80]}...")
+
+    return {"total": len(all_urls), "pending": len(pending), "migrated": len(in_mappings) + len(already_supabase)}
+
+
+# ============================================================================
 # Main Migration
 # ============================================================================
 
 def migrate_images(test_mode: bool = False, limit: int = 5):
-    """Migrate all images from Moodle to Supabase"""
+    """Migrate pending images from Moodle to Supabase (incremental)"""
 
     assert MOODLE_SESSION_COOKIE, "MOODLE_SESSION cookie not set. Get it from browser DevTools."
 
-    # Create backup before modifying
-    if QUESTIONS_FILE.exists():
-        shutil.copy(QUESTIONS_FILE, BACKUP_FILE)
-        log.info(f"Backup created: {BACKUP_FILE}")
-
-    # Load questions
+    # Load questions (read-only, we never modify this file)
     log.info(f"Loading questions from {QUESTIONS_FILE}")
+    assert QUESTIONS_FILE.exists(), f"Questions file not found: {QUESTIONS_FILE}"
+
     with open(QUESTIONS_FILE, "r", encoding="utf-8") as f:
         questions = json.load(f)
+
+    # Load existing mappings
+    mappings = load_mappings()
+    log.info(f"Loaded {len(mappings)} existing image mappings")
 
     # Setup HTTP session with Moodle cookies
     session = requests.Session()
@@ -144,68 +227,68 @@ def migrate_images(test_mode: bool = False, limit: int = 5):
     # Track statistics
     stats = {"total": 0, "downloaded": 0, "uploaded": 0, "failed": 0, "skipped": 0}
 
-    # Filter questions with images
-    questions_with_images = [q for q in questions if q.get("images")]
-    log.info(f"Found {len(questions_with_images)} questions with images")
+    # Collect pending images
+    pending_images = []
+    for q in questions:
+        question_id = q["question_id"]
+        for idx, image_url in enumerate(q.get("images", []), 1):
+            if not is_already_migrated(image_url, mappings):
+                pending_images.append({
+                    "question_id": question_id,
+                    "index": idx,
+                    "url": image_url
+                })
+
+    log.info(f"Found {len(pending_images)} pending images to migrate")
 
     if test_mode:
-        questions_with_images = questions_with_images[:limit]
-        log.info(f"TEST MODE: Processing only {limit} questions")
+        pending_images = pending_images[:limit]
+        log.info(f"TEST MODE: Processing only {limit} images")
 
-    # Process each question
-    for question in questions_with_images:
-        question_id = question["question_id"]
-        new_images = []
+    if not pending_images:
+        log.info("No pending images to migrate!")
+        return stats
 
-        for idx, image_url in enumerate(question.get("images", []), 1):
-            stats["total"] += 1
+    # Process each pending image
+    for i, img in enumerate(pending_images, 1):
+        stats["total"] += 1
+        question_id = img["question_id"]
+        idx = img["index"]
+        image_url = img["url"]
 
-            if not image_url or "supabase" in image_url:
-                # Already migrated or empty
-                new_images.append(image_url)
-                stats["skipped"] += 1
-                continue
+        log.info(f"[{i}/{len(pending_images)}] {question_id} image {idx}")
 
-            log.info(f"Processing {question_id} image {idx}: {image_url}")
+        # Download
+        image_data = download_image(image_url, session)
+        if not image_data:
+            stats["failed"] += 1
+            continue
+        stats["downloaded"] += 1
 
-            # Download
-            image_data = download_image(image_url, session)
-            if not image_data:
-                stats["failed"] += 1
-                new_images.append(image_url)  # Keep original on failure
-                continue
-            stats["downloaded"] += 1
+        # Upload
+        storage_path = generate_storage_path(question_id, idx, image_url)
+        public_url = upload_to_supabase(supabase, storage_path, image_data)
 
-            # Upload
-            storage_path = generate_storage_path(question_id, idx, image_url)
-            public_url = upload_to_supabase(supabase, storage_path, image_data)
+        if public_url:
+            stats["uploaded"] += 1
+            # Add to mappings and save immediately (resume-safe)
+            mappings[image_url] = public_url
+            save_mappings(mappings)
+            log.info(f"  -> {public_url}")
+        else:
+            stats["failed"] += 1
 
-            if public_url:
-                stats["uploaded"] += 1
-                new_images.append(public_url)
-                log.info(f"  -> Uploaded to {public_url}")
-            else:
-                stats["failed"] += 1
-                new_images.append(image_url)  # Keep original on failure
-
-            # Rate limiting
-            time.sleep(0.2)
-
-        question["images"] = new_images
-
-    # Save updated questions
-    log.info(f"Saving migrated questions to {OUTPUT_FILE}")
-    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-        json.dump(questions, f, ensure_ascii=False, indent=2)
+        # Rate limiting
+        time.sleep(0.2)
 
     # Print summary
     log.info("=" * 60)
     log.info("Migration Summary:")
-    log.info(f"  Total images: {stats['total']}")
+    log.info(f"  Processed:    {stats['total']}")
     log.info(f"  Downloaded:   {stats['downloaded']}")
     log.info(f"  Uploaded:     {stats['uploaded']}")
-    log.info(f"  Skipped:      {stats['skipped']}")
     log.info(f"  Failed:       {stats['failed']}")
+    log.info(f"  Total mapped: {len(mappings)}")
     log.info("=" * 60)
 
     return stats
@@ -218,17 +301,20 @@ def migrate_images(test_mode: bool = False, limit: int = 5):
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Migrate images to Supabase Storage")
+    parser = argparse.ArgumentParser(description="Migrate images to Supabase Storage (incremental)")
     parser.add_argument("--test", action="store_true", help="Test mode: process only 5 images")
-    parser.add_argument("--limit", type=int, default=5, help="Number of questions to process in test mode")
-    parser.add_argument("--full", action="store_true", help="Process all images (production run)")
+    parser.add_argument("--limit", type=int, default=5, help="Number of images to process in test mode")
+    parser.add_argument("--full", action="store_true", help="Process all pending images")
+    parser.add_argument("--status", action="store_true", help="Show migration status only")
 
     args = parser.parse_args()
 
-    if not args.full and not args.test:
+    if args.status:
+        show_status()
+    elif args.full or args.test:
+        migrate_images(test_mode=args.test, limit=args.limit)
+    else:
         print("Usage:")
+        print("  Status:     python migrate_images_to_supabase.py --status")
         print("  Test mode:  python migrate_images_to_supabase.py --test")
         print("  Full run:   python migrate_images_to_supabase.py --full")
-        exit(1)
-
-    migrate_images(test_mode=args.test, limit=args.limit)

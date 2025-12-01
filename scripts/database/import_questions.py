@@ -3,6 +3,11 @@ Script to import questions from JSON file into Supabase
 Run this once to populate your database
 WITH IMAGE SUPPORT, STRICT VALIDATION, AND RECONSTRUCCIONES
 
+AUTOMATIC IMAGE URL REPLACEMENT:
+- Loads image_mappings.json (from migrate_images_to_supabase.py)
+- Replaces Moodle URLs with Supabase URLs at import time
+- questions_ready.json always keeps original Moodle URLs (never modified)
+
 Usage:
     python import_questions.py                      # Default: insert-only mode
     python import_questions.py --mode insert-only   # Skip existing questions
@@ -14,10 +19,14 @@ import json
 import sys
 import os
 import argparse
+from pathlib import Path
 
 from dotenv import load_dotenv
 
 load_dotenv()
+
+PROCESSED_DIR = Path(os.getenv("EUNACOM_PROCESSED_DATA", ""))
+MAPPINGS_FILE = PROCESSED_DIR / "image_mappings.json" if PROCESSED_DIR else None
 
 # ============================================================================
 # TEST MODE - Set to True to import only questions with images
@@ -143,7 +152,7 @@ def assert_no_duplicate_ids(questions: list[dict]):
     """
     seen = {}
     duplicates = []
-    
+
     for q in questions:
         q_id = q.get("question_id", "")
         if q_id in seen:
@@ -154,7 +163,7 @@ def assert_no_duplicate_ids(questions: list[dict]):
             })
         else:
             seen[q_id] = questions.index(q)
-    
+
     if duplicates:
         error_lines = ["DUPLICATE QUESTION IDS FOUND:"]
         for dup in duplicates[:10]:
@@ -162,6 +171,55 @@ def assert_no_duplicate_ids(questions: list[dict]):
         if len(duplicates) > 10:
             error_lines.append(f"  ... and {len(duplicates) - 10} more")
         raise AssertionError("\n".join(error_lines))
+
+
+# ============================================================================
+# Image URL Mapping
+# ============================================================================
+
+def load_image_mappings() -> dict[str, str]:
+    """Load image mappings from file (original_url -> supabase_url)"""
+    if not MAPPINGS_FILE or not MAPPINGS_FILE.exists():
+        return {}
+
+    with open(MAPPINGS_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def apply_image_mappings(questions: list[dict], mappings: dict[str, str]) -> tuple[list[dict], dict]:
+    """
+    Replace Moodle image URLs with Supabase URLs using mappings.
+    Returns: (updated_questions, stats)
+    """
+    stats = {"total_images": 0, "replaced": 0, "not_found": 0, "already_supabase": 0}
+
+    for q in questions:
+        original_images = q.get("images", [])
+        new_images = []
+
+        for url in original_images:
+            stats["total_images"] += 1
+
+            if not url:
+                new_images.append(url)
+                continue
+
+            if "supabase" in url:
+                # Already a Supabase URL
+                new_images.append(url)
+                stats["already_supabase"] += 1
+            elif url in mappings:
+                # Replace with Supabase URL
+                new_images.append(mappings[url])
+                stats["replaced"] += 1
+            else:
+                # Keep original (not yet migrated)
+                new_images.append(url)
+                stats["not_found"] += 1
+
+        q["images"] = new_images
+
+    return questions, stats
 
 
 # ============================================================================
@@ -307,6 +365,27 @@ def import_questions_from_file(filepath: str, mode: str = "insert-only"):
         return
 
     # ============================================================================
+    # Apply image URL mappings (Moodle -> Supabase)
+    # ============================================================================
+    print(f"\n{'='*60}")
+    print("🖼️  APPLYING IMAGE MAPPINGS")
+    print(f"{'='*60}")
+
+    image_mappings = load_image_mappings()
+    print(f"Loaded {len(image_mappings)} image mappings from {MAPPINGS_FILE}")
+
+    if image_mappings:
+        valid_questions, img_stats = apply_image_mappings(valid_questions, image_mappings)
+        print(f"  Total images:     {img_stats['total_images']}")
+        print(f"  Replaced:         {img_stats['replaced']}")
+        print(f"  Already Supabase: {img_stats['already_supabase']}")
+        print(f"  Not migrated:     {img_stats['not_found']}")
+        if img_stats['not_found'] > 0:
+            print(f"  (Run migrate_images_to_supabase.py --full to migrate remaining images)")
+    else:
+        print("  No mappings file found - images will use original URLs")
+
+    # ============================================================================
     # Insert into database
     # ============================================================================
     print(f"\n{'='*60}")
@@ -378,9 +457,9 @@ Examples:
   python import_questions.py path/to/questions.json    # Custom file path
 
 Pipeline:
-  1. Run extract_all.py                      → questions_ready.json
-  2. Run migrate_images_to_supabase.py --full → updates questions_ready.json (optional)
-  3. Run import_questions.py (this script)
+  1. Run extract_all.py                        → questions_ready.json (original Moodle URLs)
+  2. Run migrate_images_to_supabase.py --full  → image_mappings.json (incremental, resume-safe)
+  3. Run import_questions.py (this script)     → merges mappings + inserts to DB
         """
     )
     
