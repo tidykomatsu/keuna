@@ -1,6 +1,7 @@
 """
 Smart Question Selection Algorithm - ENHANCED VERSION
 Prioritizes weakest topic first, then weighted selection within that topic
+With recent-exclusion and topic diversity for balanced learning
 """
 
 import polars as pl
@@ -11,6 +12,15 @@ from src.database import (
     get_topic_performance,
     get_answered_questions
 )
+
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
+
+WEIGHT_UPDATE_FREQUENCY = 5      # Recalculate weights every N questions
+RECENT_EXCLUSION_COUNT = 10      # Don't repeat last N questions
+TOPIC_REPEAT_THRESHOLD = 3       # Check diversity after N same-topic questions
+TOPIC_ACCURACY_THRESHOLD = 60.0  # Apply diversity if accuracy > this %
 
 # ============================================================================
 # OPTIMIZED ADAPTIVE SELECTION WITH CACHING
@@ -41,50 +51,190 @@ def get_adaptive_weights(username: str, questions_df: pl.DataFrame) -> dict:
 def select_adaptive_cached(username: str, topic: str = None) -> dict:
     """
     Adaptive selection using cached weights
+    With recent-exclusion and topic diversity (when topic=None)
     """
     import streamlit as st
 
+    # ========================================================================
+    # Load questions (cached in session)
+    # ========================================================================
     questions_df = st.session_state.get('questions_df')
     if questions_df is None:
         questions_df = get_all_questions()
         st.session_state.questions_df = questions_df
 
+    # Filter by topic if specified
+    working_df = questions_df
     if topic:
-        questions_df = questions_df.filter(pl.col("topic") == topic)
+        working_df = questions_df.filter(pl.col("topic") == topic)
 
-    if len(questions_df) == 0:
+    if len(working_df) == 0:
         return None
 
+    # ========================================================================
+    # Update weights periodically (every WEIGHT_UPDATE_FREQUENCY questions)
+    # ========================================================================
     if 'adaptive_weights' not in st.session_state:
         st.session_state.adaptive_weights = get_adaptive_weights(username, questions_df)
         st.session_state.questions_since_update = 0
 
     st.session_state.questions_since_update = st.session_state.get('questions_since_update', 0)
 
-    if st.session_state.questions_since_update >= 20:
+    if st.session_state.questions_since_update >= WEIGHT_UPDATE_FREQUENCY:
         st.session_state.adaptive_weights = get_adaptive_weights(username, questions_df)
         st.session_state.questions_since_update = 0
 
     st.session_state.questions_since_update += 1
 
+    # ========================================================================
+    # Initialize tracking lists (recent questions and topics)
+    # ========================================================================
+    if 'recent_question_ids' not in st.session_state:
+        st.session_state.recent_question_ids = []
+
+    if 'recent_topics' not in st.session_state:
+        st.session_state.recent_topics = []
+
+    # ========================================================================
+    # Build candidate pool (exclude recently shown questions)
+    # ========================================================================
+    recent_ids_set = set(st.session_state.recent_question_ids)
+    all_ids = working_df["question_id"].to_list()
+
+    # Filter out recent questions
+    candidate_ids = [q_id for q_id in all_ids if q_id not in recent_ids_set]
+
+    # Fallback: if too few candidates, allow recent questions
+    if len(candidate_ids) < 5:
+        candidate_ids = all_ids
+
+    # ========================================================================
+    # Topic diversity check (only for random practice, topic=None)
+    # ========================================================================
+    apply_topic_diversity = False
+
+    if topic is None and len(st.session_state.recent_topics) >= TOPIC_REPEAT_THRESHOLD:
+        last_n_topics = st.session_state.recent_topics[-TOPIC_REPEAT_THRESHOLD:]
+
+        # Check if last N topics are all the same
+        if len(set(last_n_topics)) == 1:
+            repeated_topic = last_n_topics[0]
+
+            # Check user accuracy on this topic (use cached if available)
+            topic_accuracy = _get_cached_topic_accuracy(username, repeated_topic)
+
+            if topic_accuracy is not None and topic_accuracy > TOPIC_ACCURACY_THRESHOLD:
+                apply_topic_diversity = True
+
+    # ========================================================================
+    # Apply topic diversity: prefer different topics
+    # ========================================================================
+    if apply_topic_diversity:
+        repeated_topic = st.session_state.recent_topics[-1]
+
+        # Get questions dict for topic lookup
+        questions_dict = _get_questions_dict(working_df)
+
+        # Split candidates: different topic vs same topic
+        different_topic_ids = [
+            q_id for q_id in candidate_ids
+            if questions_dict.get(q_id, {}).get("topic") != repeated_topic
+        ]
+
+        # If we have alternatives, use them (80% of the time for some randomness)
+        if different_topic_ids and random.random() < 0.8:
+            candidate_ids = different_topic_ids
+
+    # ========================================================================
+    # Weighted random selection from candidates
+    # ========================================================================
     weights_dict = st.session_state.adaptive_weights
-    available_ids = questions_df["question_id"].to_list()
-    available_weights = [weights_dict.get(q_id, 1.0) for q_id in available_ids]
+    candidate_weights = [weights_dict.get(q_id, 1.0) for q_id in candidate_ids]
 
-    total_weight = sum(available_weights)
+    total_weight = sum(candidate_weights)
     if total_weight == 0:
-        return questions_df.sample(1).to_dicts()[0]
+        # Fallback: pure random
+        selected_id = random.choice(candidate_ids)
+    else:
+        normalized = [w / total_weight for w in candidate_weights]
+        selected_id = random.choices(candidate_ids, weights=normalized, k=1)[0]
 
-    normalized = [w / total_weight for w in available_weights]
+    # ========================================================================
+    # Update tracking lists
+    # ========================================================================
+    st.session_state.recent_question_ids.append(selected_id)
+    if len(st.session_state.recent_question_ids) > RECENT_EXCLUSION_COUNT:
+        st.session_state.recent_question_ids.pop(0)
 
-    selected_id = random.choices(available_ids, weights=normalized, k=1)[0]
+    # Track topic (get from questions dict)
+    questions_dict = _get_questions_dict(working_df)
+    selected_topic = questions_dict.get(selected_id, {}).get("topic", "")
+
+    st.session_state.recent_topics.append(selected_topic)
+    if len(st.session_state.recent_topics) > TOPIC_REPEAT_THRESHOLD + 2:
+        st.session_state.recent_topics.pop(0)
+
+    # ========================================================================
+    # Return selected question
+    # ========================================================================
+    return questions_dict.get(selected_id)
+
+
+def _get_questions_dict(questions_df: pl.DataFrame) -> dict:
+    """Get or create questions dict from session state (cached)"""
+    import streamlit as st
 
     questions_dict = st.session_state.get('questions_dict')
     if questions_dict is None:
-        questions_dict = {row["question_id"]: dict(row) for row in questions_df.iter_rows(named=True)}
+        questions_dict = {
+            row["question_id"]: dict(row)
+            for row in questions_df.iter_rows(named=True)
+        }
         st.session_state.questions_dict = questions_dict
 
-    return questions_dict[selected_id]
+    return questions_dict
+
+
+def _get_cached_topic_accuracy(username: str, topic: str) -> float | None:
+    """
+    Get topic accuracy from cache or compute once per session.
+    Returns accuracy percentage or None if no data.
+    """
+    import streamlit as st
+
+    cache_key = 'topic_accuracy_cache'
+    if cache_key not in st.session_state:
+        st.session_state[cache_key] = {}
+
+    cache = st.session_state[cache_key]
+
+    # Check cache freshness (invalidate every WEIGHT_UPDATE_FREQUENCY questions)
+    cache_counter_key = 'topic_accuracy_cache_counter'
+    current_counter = st.session_state.get('questions_since_update', 0)
+
+    if cache_counter_key not in st.session_state:
+        st.session_state[cache_counter_key] = current_counter
+
+    # Invalidate cache when weights are refreshed
+    if current_counter < st.session_state[cache_counter_key]:
+        cache.clear()
+        st.session_state[cache_counter_key] = current_counter
+
+    # Return from cache if available
+    if topic in cache:
+        return cache[topic]
+
+    # Compute from database (one query for all topics)
+    if not cache:
+        topic_perf = get_topic_performance(username)
+
+        if len(topic_perf) == 0:
+            return None
+
+        for row in topic_perf.iter_rows(named=True):
+            cache[row['topic']] = row.get('accuracy', 0.0)
+
+    return cache.get(topic)
 
 
 # ============================================================================
@@ -208,7 +358,7 @@ def get_all_topic_masteries(username: str) -> pl.DataFrame:
 
 
 # ============================================================================
-# Enhanced Adaptive Selection
+# Enhanced Adaptive Selection (Legacy - kept for compatibility)
 # ============================================================================
 
 def select_next_question(
