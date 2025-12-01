@@ -326,15 +326,16 @@ def get_random_question_with_images() -> dict | None:
 # ============================================================================
 
 
+@st.cache_data(ttl=3600)
 def get_reconstruction_names() -> list[str]:
-    """Get list of all reconstruction names (sorted)"""
+    """Get list of all reconstruction names (sorted). Cached for 1 hour."""
     conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute(
         """
-        SELECT DISTINCT reconstruction_name 
-        FROM questions 
+        SELECT DISTINCT reconstruction_name
+        FROM questions
         WHERE reconstruction_name IS NOT NULL
         ORDER BY reconstruction_name
         """
@@ -347,10 +348,12 @@ def get_reconstruction_names() -> list[str]:
     return [row[0] for row in rows]
 
 
+@st.cache_data(ttl=3600)
 def get_reconstruction_questions(reconstruction_name: str) -> pl.DataFrame:
     """
     Get all questions for a specific reconstruction, ordered by reconstruction_order.
     This is the key function for displaying reconstructions in exact exam order.
+    Cached for 1 hour since questions rarely change.
     """
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -387,8 +390,9 @@ def get_reconstruction_questions(reconstruction_name: str) -> pl.DataFrame:
     return pl.DataFrame(rows)
 
 
+@st.cache_data(ttl=30)
 def get_reconstruction_stats(username: str, reconstruction_name: str) -> dict:
-    """Get user's progress on a specific reconstruction"""
+    """Get user's progress on a specific reconstruction. Cached for 30 seconds."""
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -429,16 +433,59 @@ def get_reconstruction_stats(username: str, reconstruction_name: str) -> dict:
     }
 
 
+@st.cache_data(ttl=60)
 def get_all_reconstructions_stats(username: str) -> list[dict]:
-    """Get stats for all reconstructions for a user"""
-    reconstruction_names = get_reconstruction_names()
-    
+    """Get stats for all reconstructions for a user. Single optimized query."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # Single query to get all reconstruction stats at once
+    cursor.execute(
+        """
+        WITH reconstruction_totals AS (
+            SELECT reconstruction_name, COUNT(*) as total
+            FROM questions
+            WHERE reconstruction_name IS NOT NULL
+            GROUP BY reconstruction_name
+        ),
+        user_progress AS (
+            SELECT
+                q.reconstruction_name,
+                COUNT(DISTINCT ua.question_id) as answered,
+                SUM(CASE WHEN ua.is_correct THEN 1 ELSE 0 END) as correct
+            FROM questions q
+            LEFT JOIN user_answers ua ON q.question_id = ua.question_id AND ua.username = %s
+            WHERE q.reconstruction_name IS NOT NULL
+            GROUP BY q.reconstruction_name
+        )
+        SELECT
+            rt.reconstruction_name as name,
+            rt.total,
+            COALESCE(up.answered, 0) as answered,
+            COALESCE(up.correct, 0) as correct
+        FROM reconstruction_totals rt
+        LEFT JOIN user_progress up ON rt.reconstruction_name = up.reconstruction_name
+        ORDER BY rt.reconstruction_name
+        """,
+        (username,),
+    )
+
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
     stats = []
-    for name in reconstruction_names:
-        stat = get_reconstruction_stats(username, name)
-        stat["name"] = name
-        stats.append(stat)
-    
+    for row in rows:
+        name, total, answered, correct = row
+        stats.append({
+            "name": name,
+            "total": total,
+            "answered": answered,
+            "correct": correct,
+            "accuracy": (correct / answered * 100) if answered > 0 else 0,
+            "progress": (answered / total * 100) if total > 0 else 0,
+        })
+
     return stats
 
 
@@ -449,7 +496,8 @@ def get_all_reconstructions_stats(username: str) -> list[dict]:
 
 def save_answer(username: str, question_id: str, user_answer: str, is_correct: bool):
     """
-    Save user answer - trigger automatically updates performance stats
+    Save user answer - trigger automatically updates performance stats.
+    Clears relevant caches after saving.
     """
     conn = get_connection()
     cursor = conn.cursor()
@@ -466,9 +514,16 @@ def save_answer(username: str, question_id: str, user_answer: str, is_correct: b
     cursor.close()
     conn.close()
 
+    # Clear caches so user sees updated stats
+    get_user_stats.clear()
+    get_answered_questions.clear()
+    get_reconstruction_stats.clear()
+    get_all_reconstructions_stats.clear()
 
+
+@st.cache_data(ttl=30)
 def get_answered_questions(username: str) -> set:
-    """Get set of question IDs user has answered"""
+    """Get set of question IDs user has answered. Cached for 30 seconds."""
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -481,8 +536,9 @@ def get_answered_questions(username: str) -> set:
     return {row[0] for row in results}
 
 
+@st.cache_data(ttl=30)
 def get_user_stats(username: str) -> dict:
-    """Get overall user statistics"""
+    """Get overall user statistics. Cached for 30 seconds."""
     conn = get_connection()
     cursor = conn.cursor()
 

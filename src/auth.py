@@ -56,9 +56,10 @@ def load_session_from_cookie() -> str | None:
 
 
 def clear_session_cookie():
-    """Clear authentication cookie"""
+    """Clear authentication cookie if it exists"""
     cookie_manager = get_cookie_manager()
-    cookie_manager.delete(COOKIE_NAME, key="delete_auth_cookie")
+    if cookie_manager.get(COOKIE_NAME) is not None:
+        cookie_manager.delete(COOKIE_NAME, key="delete_auth_cookie")
 
 
 # ============================================================================
